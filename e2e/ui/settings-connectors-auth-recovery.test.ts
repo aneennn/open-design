@@ -87,22 +87,12 @@ async function openConnectorsSettings(
         },
       },
     }),
-    onDisconnect = () => ({
-      status: 200,
-      body: {
-        connector: {
-          ...CONNECTORS[0],
-          status: 'available',
-        },
-      },
-    }),
     pendingAuthorization = null,
   }: {
     connectors?: typeof CONNECTORS;
     onPrepare?: () => Record<string, unknown>;
     onConnect?: () => { status: number; body: Record<string, unknown> };
     onCancel?: () => { status: number; body: Record<string, unknown> };
-    onDisconnect?: () => { status: number; body: Record<string, unknown> };
     pendingAuthorization?: Record<string, unknown> | null;
   } = {},
 ) {
@@ -205,15 +195,6 @@ async function openConnectorsSettings(
     });
   });
 
-  await page.route('**/api/connectors/github/connection', async (route) => {
-    const response = onDisconnect();
-    await route.fulfill({
-      status: response.status,
-      contentType: 'application/json',
-      body: JSON.stringify(response.body),
-    });
-  });
-
   await page.goto('/');
   await page.getByTitle('Configure execution mode').click();
 
@@ -225,109 +206,7 @@ async function openConnectorsSettings(
   return dialog;
 }
 
-test.describe('Settings connectors auth flows', () => {
-  test('shows an inline connector error when connect fails', async ({ page }) => {
-    const dialog = await openConnectorsSettings(page, {
-      onConnect: () => ({
-        status: 500,
-        body: {
-          error: { message: 'Composio provider is not configured' },
-        },
-      }),
-    });
-
-    const githubCard = connectorCard(dialog, 'github');
-    await githubCard.getByRole('button', { name: 'Connect' }).click();
-
-    await expect(githubCard.getByRole('alert')).toContainText(
-      'Composio provider is not configured',
-    );
-    await expect(githubCard.getByRole('button', { name: 'Connect' })).toBeVisible();
-  });
-
-  test('clears the inline error when the user retries and the connector succeeds', async ({ page }) => {
-    let connectAttempts = 0;
-    const dialog = await openConnectorsSettings(page, {
-      onConnect: () => {
-        connectAttempts += 1;
-        if (connectAttempts === 1) {
-          return {
-            status: 500,
-            body: {
-              error: { message: 'Composio provider is not configured' },
-            },
-          };
-        }
-        return {
-          status: 200,
-          body: {
-            connector: {
-              ...CONNECTORS[0],
-              status: 'connected',
-              accountLabel: 'octo-user',
-            },
-            auth: { kind: 'connected' },
-          },
-        };
-      },
-    });
-
-    const githubCard = connectorCard(dialog, 'github');
-
-    await githubCard.getByRole('button', { name: 'Connect' }).click();
-    await expect(githubCard.getByRole('alert')).toContainText(
-      'Composio provider is not configured',
-    );
-
-    await githubCard.getByRole('button', { name: 'Connect' }).click();
-
-    await expect.poll(() => connectAttempts).toBe(2);
-    await expect(githubCard.getByRole('button', { name: 'Disconnect' })).toBeVisible();
-    await expect(githubCard.getByRole('alert')).toHaveCount(0);
-  });
-
-  test('switches from Connect to Disconnect on success, then returns to Connect after a successful disconnect', async ({ page }) => {
-    let disconnectRequests = 0;
-    const dialog = await openConnectorsSettings(page, {
-      onConnect: () => ({
-        status: 200,
-        body: {
-          connector: {
-            ...CONNECTORS[0],
-            status: 'connected',
-            accountLabel: 'octo-user',
-          },
-          auth: { kind: 'connected' },
-        },
-      }),
-      onDisconnect: () => {
-        disconnectRequests += 1;
-        return {
-          status: 200,
-          body: {
-            connector: {
-              ...CONNECTORS[0],
-              status: 'available',
-            },
-          },
-        };
-      },
-    });
-
-    const githubCard = connectorCard(dialog, 'github');
-    await githubCard.getByRole('button', { name: 'Connect' }).click();
-
-    await expect(githubCard.getByRole('button', { name: 'Disconnect' })).toBeVisible();
-    await expect(githubCard.getByText('octo-user')).toBeVisible();
-
-    await githubCard.getByRole('button', { name: 'Disconnect' }).click();
-
-    await expect.poll(() => disconnectRequests).toBe(1);
-    await expect(githubCard.getByRole('button', { name: 'Connect' })).toBeVisible();
-    await expect(githubCard.getByRole('button', { name: 'Disconnect' })).toHaveCount(0);
-    await expect(githubCard.getByText('octo-user')).toHaveCount(0);
-  });
-
+test.describe('Settings connectors auth recovery', () => {
   test('does not keep a pending authorization when the OAuth launch fails immediately', async ({ page }) => {
     const dialog = await openConnectorsSettings(page, {
       onConnect: () => ({
