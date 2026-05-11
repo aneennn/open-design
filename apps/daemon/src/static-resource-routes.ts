@@ -26,6 +26,13 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
     BUNDLED_PETS_DIR,
   } = ctx.paths;
   const { listAllSkills, listAllDesignSystems, mimeFor } = ctx.resources;
+  const { isLocalSameOrigin, resolvedPortRef, sendApiError } = ctx.http;
+  const requireLocalOrigin = (req: any, res: any) => {
+    if (isLocalSameOrigin(req, resolvedPortRef.current)) return true;
+    sendApiError(res, 403, 'FORBIDDEN', 'local origin required');
+    return false;
+  };
+
   app.get('/api/agents', async (_req, res) => {
     try {
       const config = await readAppConfig(RUNTIME_DATA_DIR);
@@ -401,6 +408,7 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
   });
 
   app.post('/api/skills/install', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
     try {
       const result = await installFromTarget(req.body, USER_SKILLS_DIR, 'skill');
       if (!result.ok) return res.status(400).json({ error: result.error });
@@ -427,6 +435,7 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
   });
 
   app.delete('/api/skills/:id', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
     try {
       const result = await uninstallById(req.params.id, USER_SKILLS_DIR, SKILLS_DIR, 'skill');
       if (!result.ok) return res.status(result.status || 400).json({ error: result.error });
@@ -437,6 +446,7 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
   });
 
   app.post('/api/design-systems/install', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
     try {
       const result = await installFromTarget(req.body, USER_DESIGN_SYSTEMS_DIR, 'design-system');
       if (!result.ok) return res.status(400).json({ error: result.error });
@@ -456,6 +466,7 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
   });
 
   app.delete('/api/design-systems/:id', async (req, res) => {
+    if (!requireLocalOrigin(req, res)) return;
     try {
       const result = await uninstallById(
         req.params.id,
