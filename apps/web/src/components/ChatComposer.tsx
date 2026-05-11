@@ -684,14 +684,14 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       const skillMeta = skillIds.length > 0 ? { skillIds } : undefined;
       const hatched = expandHatchCommand(prompt);
       if (hatched) {
-        if (streaming) return;
+        if (streaming || sendDisabled) return;
         onSend(hatched, staged, commentAttachments, skillMeta);
         reset();
         return;
       }
       const search = researchAvailable ? expandSearchCommand(prompt) : null;
       if (search) {
-        if (streaming) return;
+        if (streaming || sendDisabled) return;
         onSend(search.prompt, staged, commentAttachments, {
           ...skillMeta,
           research: { enabled: true, query: search.query },
@@ -699,7 +699,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         reset();
         return;
       }
-      if ((!prompt && commentAttachments.length === 0) || streaming) return;
+      if ((!prompt && commentAttachments.length === 0) || streaming || sendDisabled) return;
       onSend(prompt, staged, commentAttachments, skillMeta);
       reset();
     }
