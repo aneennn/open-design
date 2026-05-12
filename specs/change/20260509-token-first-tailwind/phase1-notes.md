@@ -4,6 +4,13 @@
 
 <!-- Files created/modified; implementation decisions; migration inventory/classification; retained/deferred rationale; problems encountered; deviations from design -->
 
+### Step 1: Tailwind foundations
+
+- `apps/web/package.json` / `pnpm-lock.yaml` - added Tailwind v4 foundation dependencies: `tailwindcss`, `@tailwindcss/postcss`, and `postcss`.
+- `apps/web/postcss.config.mjs` - added the web-local PostCSS config that loads `@tailwindcss/postcss`.
+- `scripts/guard.ts` - allowlisted the exact PostCSS config path with a compatibility-format comment so the residual JavaScript guard continues to fail on unplanned project-owned JavaScript.
+- `apps/web/src/index.css` - added Tailwind theme/utilities layered imports, kept Preflight excluded, added the local base-layer border-style reset, and recorded the cascade policy for retained element/reset rules before component migration.
+
 ### Implementation requirements
 
 - Tailwind no-Preflight setup must use the official layered CSS imports in `apps/web/src/index.css`:
@@ -24,3 +31,7 @@
 ## Verification
 
 <!-- Commands run and results; screenshot artifact links/paths; exact baseline/development startup parameters or full commands; baseline/development service URLs; baseline/development namespace names; agent comparison scenario coverage; theme/accent matrix covered; observed drift; approved deviations -->
+
+- `pnpm install` - passed; pnpm emitted existing workspace bin/link warnings for missing daemon dist CLI during install.
+- `pnpm guard` - passed; residual JavaScript allowlist accepts `apps/web/postcss.config.mjs`.
+- `pnpm --filter @open-design/web build` - passed with Next.js 16/Turbopack.

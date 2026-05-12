@@ -192,14 +192,14 @@ Each phase maps to one PR. Every PR must be reviewable on its own, keep business
 
 Goal: add Tailwind v4 infrastructure, expose Open Design tokens as Tailwind utilities, and land the first style guard scaffolding.
 
-- [ ] Step 1: Install Tailwind foundations
-  - [ ] Substep 1.1 Implement: Add Tailwind v4/PostCSS dependencies to `apps/web/package.json`.
-  - [ ] Substep 1.2 Implement: Add a web-local PostCSS config for `@tailwindcss/postcss`.
-  - [ ] Substep 1.3 Implement: Add `apps/web/postcss.config.mjs` to the exact residual JavaScript allowlist in `scripts/guard.ts`, with a comment explaining that the PostCSS/Tailwind config entry needs the `.mjs` compatibility format, keeping `pnpm guard` coverage for planned config files.
-  - [ ] Substep 1.4 Implement: Import Tailwind theme and utilities layers in `apps/web/src/index.css` with `@layer theme, base, utilities;`, `@import "tailwindcss/theme.css" layer(theme);`, and `@import "tailwindcss/utilities.css" layer(utilities);`, while preserving the existing global entry behavior and excluding Preflight from the foundation slice. Add the narrow local border-style reset in the base layer with `@layer base { *, ::before, ::after, ::backdrop, ::file-selector-button { border: 0 solid; } }` so Tailwind `border` width utilities in the later utilities layer combine with project `border-*` color utilities without requiring `border-solid` on every migrated element. Record the cascade policy that retained element/reset rules which may conflict with migrated utilities must also live in `@layer base`, be constrained to non-migrated scopes, or be removed before the affected elements migrate.
-  - [ ] Substep 1.5 Verify: Run `pnpm install`.
-  - [ ] Substep 1.6 Verify: Run `pnpm guard` and confirm the PostCSS config allowlist works.
-  - [ ] Substep 1.7 Verify: Run `pnpm --filter @open-design/web build`.
+- [x] Step 1: Install Tailwind foundations
+  - [x] Substep 1.1 Implement: Add Tailwind v4/PostCSS dependencies to `apps/web/package.json`.
+  - [x] Substep 1.2 Implement: Add a web-local PostCSS config for `@tailwindcss/postcss`.
+  - [x] Substep 1.3 Implement: Add `apps/web/postcss.config.mjs` to the exact residual JavaScript allowlist in `scripts/guard.ts`, with a comment explaining that the PostCSS/Tailwind config entry needs the `.mjs` compatibility format, keeping `pnpm guard` coverage for planned config files.
+  - [x] Substep 1.4 Implement: Import Tailwind theme and utilities layers in `apps/web/src/index.css` with `@layer theme, base, utilities;`, `@import "tailwindcss/theme.css" layer(theme);`, and `@import "tailwindcss/utilities.css" layer(utilities);`, while preserving the existing global entry behavior and excluding Preflight from the foundation slice. Add the narrow local border-style reset in the base layer with `@layer base { *, ::before, ::after, ::backdrop, ::file-selector-button { border: 0 solid; } }` so Tailwind `border` width utilities in the later utilities layer combine with project `border-*` color utilities without requiring `border-solid` on every migrated element. Record the cascade policy that retained element/reset rules which may conflict with migrated utilities must also live in `@layer base`, be constrained to non-migrated scopes, or be removed before the affected elements migrate.
+  - [x] Substep 1.5 Verify: Run `pnpm install`.
+  - [x] Substep 1.6 Verify: Run `pnpm guard` and confirm the PostCSS config allowlist works.
+  - [x] Substep 1.7 Verify: Run `pnpm --filter @open-design/web build`.
 - [ ] Step 2: Expose Open Design tokens as Tailwind utilities
   - [ ] Substep 2.1 Implement: Add CSS-first `@theme` aliases for colors, core semantic status, selection/inspect overlays, radius, shadow, font tokens, and exact existing UI text-size aliases; use native Tailwind utilities for spacing and standard typography scale. Confirm token border examples such as `border border-border` render against the local border-style reset when Preflight is omitted.
   - [ ] Substep 2.2 Implement: Clear default Tailwind colors and declare the project-approved color namespace.

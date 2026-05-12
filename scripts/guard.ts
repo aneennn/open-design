@@ -60,6 +60,8 @@ const residualAllowedExactPaths = new Set([
   "apps/packaged/esbuild.config.mjs",
   // Browser service workers must be served as JavaScript files.
   "apps/web/public/od-notifications-sw.js",
+  // PostCSS loads Tailwind through a web-local .mjs compatibility config entry.
+  "apps/web/postcss.config.mjs",
   "scripts/bake-html-ppt-examples.mjs",
   "scripts/scaffold-html-ppt-skills.mjs",
   "scripts/sync-hyperframes-skill.mjs",
