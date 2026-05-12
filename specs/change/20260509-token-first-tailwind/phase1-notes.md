@@ -4,6 +4,8 @@
 
 <!-- Files created/modified; implementation decisions; migration inventory/classification; retained/deferred rationale; problems encountered; deviations from design -->
 
+### Implementation requirements
+
 - Tailwind no-Preflight setup must use the official layered CSS imports in `apps/web/src/index.css`:
   ```css
   @layer theme, base, utilities;
