@@ -401,8 +401,8 @@ export function EntryView({
         actions={(
           <SettingsIconButton
             onClick={() => onOpenSettings()}
-            title={t('settings.envConfigure')}
-            ariaLabel={t('settings.envConfigure')}
+            title={t('entry.openSettingsTitle')}
+            ariaLabel={t('entry.openSettingsAria')}
           />
         )}
       />
