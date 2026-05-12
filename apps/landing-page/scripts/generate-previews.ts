@@ -20,7 +20,7 @@
  * by the `sharp` post-processor below.
  */
 import { chromium, type Browser } from 'playwright';
-import { mkdir, cp, readdir, stat } from 'node:fs/promises';
+import { mkdir, cp, readdir, readFile, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
@@ -41,6 +41,186 @@ interface Job {
   htmlPath: string;
   /** Optional ready-made preview to copy verbatim (skips browser). */
   reuseFrom?: string;
+  /**
+   * Optional inline HTML to render via `page.setContent` instead of
+   * loading `htmlPath`. Used for the frontmatter-driven placeholder
+   * fallback when a skill ships no `example.html`.
+   */
+  inlineHtml?: string;
+}
+
+interface SkillMeta {
+  name: string;
+  description: string;
+  mode?: string;
+  scenario?: string;
+  surface?: string;
+}
+
+/**
+ * Lightweight YAML-frontmatter extraction. We deliberately do not pull in
+ * a full YAML parser: every field this generator needs is a plain scalar
+ * (top-level `name`, `description`, or one nested level under `od:`),
+ * and each one fits a one-line regex. Bringing in `yaml`/`gray-matter`
+ * here would expand the deploy job's dependency surface for an
+ * 80-line code path.
+ */
+async function parseSkillMeta(skillDir: string): Promise<SkillMeta> {
+  const slug = path.basename(skillDir);
+  const skillMd = path.join(skillDir, 'SKILL.md');
+  const fallback: SkillMeta = { name: slug, description: '' };
+  if (!existsSync(skillMd)) return fallback;
+
+  const raw = await readFile(skillMd, 'utf8');
+  const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!fmMatch) return fallback;
+  const fm = fmMatch[1] ?? '';
+
+  const stripQuotes = (s: string): string =>
+    s.trim().replace(/^['"]|['"]$/g, '');
+  const top = (key: string): string | undefined => {
+    // `^name: value` at column 0 — only top-level fields, not nested.
+    const m = fm.match(new RegExp(`^${key}:\\s*(.+?)\\s*$`, 'm'));
+    return m ? stripQuotes(m[1] ?? '') : undefined;
+  };
+  const odField = (key: string): string | undefined => {
+    // `^od:` block, then `  key: value` two-space-indented one level deep.
+    const m = fm.match(new RegExp(`^od:[\\s\\S]*?^  ${key}:\\s*(.+?)\\s*$`, 'm'));
+    return m ? stripQuotes(m[1] ?? '') : undefined;
+  };
+
+  return {
+    name: top('name') ?? slug,
+    description: top('description') ?? '',
+    mode: odField('mode'),
+    scenario: odField('scenario'),
+    surface: odField('surface'),
+  };
+}
+
+/**
+ * Render a self-contained 1440×900 HTML placeholder for a skill that ships
+ * no `example.html`. Uses the landing page's editorial palette so these
+ * thumbnails read as part of the catalog rather than a debug fallback,
+ * but stays clearly distinct from a real example via the "Skill" eyebrow
+ * and lack of any rendered output.
+ */
+function renderFallbackHtml(meta: SkillMeta): string {
+  const escape = (s: string): string =>
+    s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+  // The `description` field tends to be a long paragraph stuffed with
+  // trigger phrases; clip to keep the placeholder legible at thumbnail
+  // sizes. Hard cap on character count, then break at the nearest
+  // sentence boundary so we don't clip mid-word.
+  const fullDesc = meta.description.replace(/\s+/g, ' ').trim();
+  const CAP = 220;
+  let desc = fullDesc;
+  if (desc.length > CAP) {
+    const window = desc.slice(0, CAP);
+    const cut = Math.max(window.lastIndexOf('. '), window.lastIndexOf('. '));
+    desc = (cut > 80 ? window.slice(0, cut + 1) : window.trimEnd() + '…').trim();
+  }
+
+  const chips: string[] = [];
+  if (meta.mode) chips.push(meta.mode);
+  if (meta.scenario && meta.scenario !== meta.mode) chips.push(meta.scenario);
+  if (meta.surface && meta.surface !== meta.mode && meta.surface !== meta.scenario) {
+    chips.push(meta.surface);
+  }
+  const chipsHtml = chips
+    .map((c) => `<span class="chip">${escape(c)}</span>`)
+    .join('');
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>${escape(meta.name)}</title>
+<style>
+  :root {
+    --ink: #14110b;
+    --paper: #efe7d2;
+    --paper-deep: #d8cfb6;
+    --coral: #ed6f5c;
+    --ink-faint: rgba(20, 17, 11, 0.55);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1440px; height: 900px; }
+  body {
+    font-family: 'Times New Roman', ui-serif, Georgia, serif;
+    background: linear-gradient(135deg, var(--paper) 0%, var(--paper-deep) 100%);
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    position: relative;
+    overflow: hidden;
+  }
+  .frame { padding: 96px 120px; max-width: 1200px; }
+  .eyebrow {
+    font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--coral);
+    margin-bottom: 40px;
+  }
+  .title {
+    font-size: 104px;
+    line-height: 1.02;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    margin-bottom: 32px;
+    word-break: break-word;
+  }
+  .desc {
+    font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-size: 26px;
+    line-height: 1.45;
+    color: var(--ink-faint);
+    max-width: 920px;
+    margin-bottom: 48px;
+  }
+  .chips { display: flex; gap: 14px; flex-wrap: wrap; }
+  .chip {
+    font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 9px 18px;
+    border: 1px solid var(--ink);
+    border-radius: 999px;
+    color: var(--ink);
+    background: rgba(255, 255, 255, 0.25);
+  }
+  .brand {
+    position: absolute;
+    top: 60px;
+    right: 80px;
+    font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+</style>
+</head>
+<body>
+  <div class="brand">Open Design · Skill</div>
+  <div class="frame">
+    <div class="eyebrow">Skill</div>
+    <h1 class="title">${escape(meta.name)}</h1>
+    ${desc ? `<p class="desc">${escape(desc)}</p>` : ''}
+    ${chipsHtml ? `<div class="chips">${chipsHtml}</div>` : ''}
+  </div>
+</body>
+</html>`;
 }
 
 async function discoverJobs(): Promise<Job[]> {
@@ -49,14 +229,26 @@ async function discoverJobs(): Promise<Job[]> {
   const skillEntries = await readdir(SKILLS_DIR, { withFileTypes: true });
   for (const entry of skillEntries) {
     if (!entry.isDirectory()) continue;
-    const example = path.join(SKILLS_DIR, entry.name, 'example.html');
+    const skillDir = path.join(SKILLS_DIR, entry.name);
+    const example = path.join(skillDir, 'example.html');
     if (existsSync(example)) {
       jobs.push({
         bucket: 'skills',
         slug: entry.name,
         htmlPath: example,
       });
+      continue;
     }
+    // Fallback: synthesize a frontmatter-driven placeholder so every skill
+    // listed in the catalog gets *something* in `/previews/skills/`. Real
+    // example.html files always win when present; this only fills the gap.
+    const meta = await parseSkillMeta(skillDir);
+    jobs.push({
+      bucket: 'skills',
+      slug: entry.name,
+      htmlPath: skillDir, // unused for inline jobs but preserves type shape
+      inlineHtml: renderFallbackHtml(meta),
+    });
   }
 
   if (existsSync(TEMPLATES_DIR)) {
@@ -90,7 +282,7 @@ async function discoverJobs(): Promise<Job[]> {
 async function captureOne(browser: Browser, job: Job): Promise<{
   ok: boolean;
   bytes: number;
-  source: 'reuse' | 'render';
+  source: 'reuse' | 'render' | 'fallback';
   error?: string;
 }> {
   const targetDir = path.join(OUT_DIR, job.bucket);
@@ -109,10 +301,15 @@ async function captureOne(browser: Browser, job: Job): Promise<{
   });
   const page = await ctx.newPage();
   try {
-    await page.goto(pathToFileURL(job.htmlPath).toString(), {
-      waitUntil: 'load',
-      timeout: 15000,
-    });
+    if (job.inlineHtml) {
+      // Self-contained HTML — no external resources to wait on.
+      await page.setContent(job.inlineHtml, { waitUntil: 'load', timeout: 15000 });
+    } else {
+      await page.goto(pathToFileURL(job.htmlPath).toString(), {
+        waitUntil: 'load',
+        timeout: 15000,
+      });
+    }
     await page.waitForTimeout(SETTLE_MS);
     await page.screenshot({
       path: targetPng,
@@ -121,12 +318,12 @@ async function captureOne(browser: Browser, job: Job): Promise<{
       clip: { x: 0, y: 0, width: VIEWPORT.width, height: VIEWPORT.height },
     });
     const s = await stat(targetPng);
-    return { ok: true, bytes: s.size, source: 'render' };
+    return { ok: true, bytes: s.size, source: job.inlineHtml ? 'fallback' : 'render' };
   } catch (err) {
     return {
       ok: false,
       bytes: 0,
-      source: 'render',
+      source: job.inlineHtml ? 'fallback' : 'render',
       error: err instanceof Error ? err.message : String(err),
     };
   } finally {
@@ -185,6 +382,7 @@ async function main(): Promise<number> {
   let failed = 0;
   let bytes = 0;
   const reused: string[] = [];
+  const fallbacks: string[] = [];
   const errors: { slug: string; error: string }[] = [];
 
   // Concurrency limit — 4 contexts at once is plenty for this workload
@@ -203,7 +401,14 @@ async function main(): Promise<number> {
             ok++;
             bytes += result.bytes;
             if (result.source === 'reuse') reused.push(job.slug);
-            process.stdout.write(`✓ ${job.bucket}/${job.slug} (${(result.bytes / 1024).toFixed(0)}kb${result.source === 'reuse' ? ', reused' : ''})\n`);
+            if (result.source === 'fallback') fallbacks.push(job.slug);
+            const tag =
+              result.source === 'reuse'
+                ? ', reused'
+                : result.source === 'fallback'
+                  ? ', fallback'
+                  : '';
+            process.stdout.write(`✓ ${job.bucket}/${job.slug} (${(result.bytes / 1024).toFixed(0)}kb${tag})\n`);
           } else {
             failed++;
             errors.push({ slug: `${job.bucket}/${job.slug}`, error: result.error ?? 'unknown' });
@@ -216,7 +421,9 @@ async function main(): Promise<number> {
     await browser.close();
   }
 
-  console.log(`\nDone. ok=${ok} failed=${failed} reused=${reused.length} total=${(bytes / 1024 / 1024).toFixed(1)}MB`);
+  console.log(
+    `\nDone. ok=${ok} failed=${failed} reused=${reused.length} fallback=${fallbacks.length} total=${(bytes / 1024 / 1024).toFixed(1)}MB`,
+  );
   if (errors.length > 0) {
     console.log('\nPer-artifact failures (deploy continues — catalog degrades gracefully for these):');
     for (const e of errors) console.log(`  ${e.slug}: ${e.error}`);
