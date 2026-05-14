@@ -921,14 +921,37 @@ export async function applyPlugin(
 async function readErrorMessage(resp: Response): Promise<string> {
   try {
     const json = (await resp.json()) as {
-      error?: string | { message?: string };
+      error?: string | { message?: string; data?: { errors?: unknown } };
+      errors?: unknown;
+      message?: string;
     };
-    if (typeof json.error === 'string') return json.error;
-    if (json.error?.message) return json.error.message;
+    const message =
+      json.message ??
+      (typeof json.error === 'string' ? json.error : json.error?.message);
+    const details = extractErrorDetails(
+      typeof json.error === 'object' ? json.error.data?.errors : undefined,
+      json.errors,
+    );
+    if (message && details.length > 0) return `${message}: ${details.join('; ')}`;
+    if (message) return message;
   } catch {
     // Fall through to the status text below.
   }
   return resp.statusText || `HTTP ${resp.status}`;
+}
+
+function extractErrorDetails(...values: unknown[]): string[] {
+  return values.flatMap((value) => {
+    if (!Array.isArray(value)) return [];
+    return value.flatMap((item) => {
+      if (typeof item === 'string' && item.trim()) return [item.trim()];
+      if (item && typeof item === 'object' && 'message' in item) {
+        const message = (item as { message?: unknown }).message;
+        if (typeof message === 'string' && message.trim()) return [message.trim()];
+      }
+      return [];
+    });
+  });
 }
 
 async function* readServerSentEvents(

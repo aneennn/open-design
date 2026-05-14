@@ -1036,9 +1036,10 @@ const PLUGIN_REGISTRY_DIR = resolveDaemonResourceDir(
   path.join(PROJECT_ROOT, 'plugins', 'registry'),
 );
 const OFFICIAL_MARKETPLACE_ID = 'official';
-const OFFICIAL_MARKETPLACE_URL = 'https://open-design.ai/marketplace/open-design-marketplace.json';
+const DEFAULT_MARKETPLACE_SEED_BASE_URL =
+  'https://raw.githubusercontent.com/nexu-io/open-design/garnet-hemisphere/plugins/registry';
+const OFFICIAL_MARKETPLACE_URL = `${DEFAULT_MARKETPLACE_SEED_BASE_URL}/official/open-design-marketplace.json`;
 const OFFICIAL_PLUGIN_SOURCE_REPO = 'github:nexu-io/open-design@main';
-const DEFAULT_MARKETPLACE_SEED_BASE_URL = 'https://open-design.ai/marketplace';
 const DEFAULT_MARKETPLACE_SEEDS = new Map([
   [OFFICIAL_MARKETPLACE_ID, {
     trust: 'official',

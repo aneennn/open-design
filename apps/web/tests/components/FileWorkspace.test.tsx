@@ -310,24 +310,8 @@ describe('FileWorkspace upload input', () => {
 });
 
 describe('DesignFilesPanel plugin folders', () => {
-  it('surfaces generated plugin folders with an install action', async () => {
-    const onInstallPluginFolder = vi.fn(async () => ({
-      ok: true,
-      warnings: [],
-      message: 'Installed Generated Plugin.',
-      log: [],
-    }));
-    const onPublishPluginFolder = vi.fn(async () => ({
-      ok: true,
-      message: 'Published Generated Plugin.',
-      url: 'https://github.com/acme/generated-plugin',
-    }));
-    const onContributePluginFolder = vi.fn(async () => ({
-      ok: true,
-      message: 'Prepared Open Design contribution.',
-      url: 'https://github.com/nexu-io/open-design/issues/new',
-    }));
-    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+  it('surfaces generated plugin folders with agent-routed CLI actions', async () => {
+    const onPluginFolderAgentAction = vi.fn();
     const container = renderWorkspace(
       <DesignFilesPanel
         projectId="project-1"
@@ -347,9 +331,7 @@ describe('DesignFilesPanel plugin folders', () => {
         onUploadFiles={vi.fn()}
         onPaste={vi.fn()}
         onNewSketch={vi.fn()}
-        onInstallPluginFolder={onInstallPluginFolder}
-        onPublishPluginFolder={onPublishPluginFolder}
-        onContributePluginFolder={onContributePluginFolder}
+        onPluginFolderAgentAction={onPluginFolderAgentAction}
       />,
     );
 
@@ -361,7 +343,7 @@ describe('DesignFilesPanel plugin folders', () => {
     await act(async () => {
       install?.click();
     });
-    expect(onInstallPluginFolder).toHaveBeenCalledWith('generated-plugin');
+    expect(onPluginFolderAgentAction).toHaveBeenCalledWith('generated-plugin', 'install');
 
     const publish = container.querySelector<HTMLButtonElement>(
       '[data-testid="design-plugin-folder-publish-generated-plugin"]',
@@ -374,16 +356,14 @@ describe('DesignFilesPanel plugin folders', () => {
     await act(async () => {
       publish?.click();
     });
-    expect(onPublishPluginFolder).toHaveBeenCalledWith('generated-plugin');
-    expect(open).toHaveBeenCalledWith(
-      'https://github.com/acme/generated-plugin',
-      '_blank',
-      'noopener,noreferrer',
-    );
+    expect(onPluginFolderAgentAction).toHaveBeenCalledWith('generated-plugin', 'publish');
     await act(async () => {
       contribute?.click();
     });
-    expect(onContributePluginFolder).toHaveBeenCalledWith('generated-plugin');
+    expect(onPluginFolderAgentAction).toHaveBeenCalledWith('generated-plugin', 'contribute');
+    expect(container.textContent).toContain(
+      'Sent to the agent. The CLI run will continue in chat.',
+    );
   });
 });
 

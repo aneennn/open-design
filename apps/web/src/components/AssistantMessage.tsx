@@ -4,11 +4,6 @@ import { FileOpsSummary } from "./FileOpsSummary";
 import { renderMarkdown } from "../runtime/markdown";
 import { projectFileUrl } from "../providers/registry";
 import {
-  contributeGeneratedPluginToOpenDesign,
-  installGeneratedPluginFolder,
-  publishGeneratedPluginToGitHub,
-} from "../state/projects";
-import {
   splitOnQuestionForms,
   type QuestionForm,
 } from "../artifacts/question-form";
@@ -18,6 +13,7 @@ import {
   getPluginFolderCandidates,
   type PluginFolderCandidate,
 } from "./design-files/pluginFolders";
+import type { PluginFolderAgentAction } from "./design-files/pluginFolderActions";
 import { Icon } from "./Icon";
 import { useT } from "../i18n";
 import { deriveFileOps, type FileOpEntry } from "../runtime/file-ops";
@@ -50,6 +46,10 @@ interface Props {
   projectFiles?: ProjectFile[];
   projectFileNames?: Set<string>;
   onRequestOpenFile?: (name: string) => void;
+  onRequestPluginFolderAgentAction?: (
+    relativePath: string,
+    action: PluginFolderAgentAction,
+  ) => Promise<void> | void;
   // True only for the most recent assistant message — gate question-form
   // interactivity on this so older forms render as a locked "answered"
   // capsule instead of being re-submittable.
@@ -81,6 +81,7 @@ export function AssistantMessage({
   projectFiles = [],
   projectFileNames,
   onRequestOpenFile,
+  onRequestPluginFolderAgentAction,
   isLast,
   nextUserContent,
   onSubmitForm,
@@ -207,8 +208,8 @@ export function AssistantMessage({
         {!streaming && projectId && pluginActionFolders.length > 0 ? (
           <PluginActionPanel
             folders={pluginActionFolders}
-            projectId={projectId}
             onRequestOpenFile={onRequestOpenFile}
+            onRequestPluginFolderAgentAction={onRequestPluginFolderAgentAction}
           />
         ) : null}
         {!streaming && unfinishedTodos.length > 0 ? (
@@ -726,24 +727,28 @@ function ProducedFiles({
   );
 }
 
-type PluginActionKind = "install" | "publish" | "contribute";
-
 function PluginActionPanel({
   folders,
-  projectId,
   onRequestOpenFile,
+  onRequestPluginFolderAgentAction,
 }: {
   folders: PluginFolderCandidate[];
-  projectId: string;
   onRequestOpenFile?: (name: string) => void;
+  onRequestPluginFolderAgentAction?: (
+    relativePath: string,
+    action: PluginFolderAgentAction,
+  ) => Promise<void> | void;
 }) {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [noticeByFolder, setNoticeByFolder] = useState<Record<string, string>>(
     {},
   );
 
-  async function runAction(folder: PluginFolderCandidate, action: PluginActionKind) {
-    if (busyKey) return;
+  async function runAction(
+    folder: PluginFolderCandidate,
+    action: PluginFolderAgentAction,
+  ) {
+    if (busyKey || !onRequestPluginFolderAgentAction) return;
     const key = `${action}:${folder.path}`;
     setBusyKey(key);
     setNoticeByFolder((prev) => {
@@ -752,27 +757,11 @@ function PluginActionPanel({
       return next;
     });
     try {
-      const outcome =
-        action === "install"
-          ? await installGeneratedPluginFolder(projectId, folder.path)
-          : action === "publish"
-            ? await publishGeneratedPluginToGitHub(projectId, folder.path)
-            : await contributeGeneratedPluginToOpenDesign(projectId, folder.path);
-      const fallback =
-        action === "install"
-          ? outcome.ok
-            ? "Installed plugin into My plugins."
-            : "Plugin install failed."
-          : outcome.ok
-            ? "Prepared plugin next step."
-            : "Plugin action failed.";
+      await onRequestPluginFolderAgentAction(folder.path, action);
       setNoticeByFolder((prev) => ({
         ...prev,
-        [folder.path]: outcome.message ?? fallback,
+        [folder.path]: "Sent to the agent. The CLI run will continue in chat.",
       }));
-      if (action !== "install" && "url" in outcome && outcome.url) {
-        window.open(outcome.url, "_blank", "noopener,noreferrer");
-      }
     } finally {
       setBusyKey(null);
     }
@@ -787,7 +776,7 @@ function PluginActionPanel({
         <div>
           <div className="plugin-action-panel__title">Plugin ready</div>
           <div className="plugin-action-panel__subtitle">
-            Choose what to do with the generated plugin folder.
+            Send the next step to the agent so it can run the od CLI.
           </div>
         </div>
       </div>
@@ -812,7 +801,7 @@ function PluginActionPanel({
                 type="button"
                 className="plugin-action-button plugin-action-button--primary"
                 data-testid={`assistant-plugin-install-${folder.path}`}
-                disabled={busyKey !== null}
+                disabled={busyKey !== null || !onRequestPluginFolderAgentAction}
                 onClick={() => void runAction(folder, "install")}
               >
                 <Icon
@@ -820,14 +809,14 @@ function PluginActionPanel({
                   size={13}
                 />
                 <span>
-                  {busyKey === `install:${folder.path}` ? "Adding..." : "Add to My plugins"}
+                  {busyKey === `install:${folder.path}` ? "Sending..." : "Add to My plugins"}
                 </span>
               </button>
               <button
                 type="button"
                 className="plugin-action-button"
                 data-testid={`assistant-plugin-publish-${folder.path}`}
-                disabled={busyKey !== null}
+                disabled={busyKey !== null || !onRequestPluginFolderAgentAction}
                 onClick={() => void runAction(folder, "publish")}
               >
                 <Icon
@@ -835,14 +824,14 @@ function PluginActionPanel({
                   size={13}
                 />
                 <span>
-                  {busyKey === `publish:${folder.path}` ? "Publishing..." : "Publish repo"}
+                  {busyKey === `publish:${folder.path}` ? "Sending..." : "Publish repo"}
                 </span>
               </button>
               <button
                 type="button"
                 className="plugin-action-button"
                 data-testid={`assistant-plugin-contribute-${folder.path}`}
-                disabled={busyKey !== null}
+                disabled={busyKey !== null || !onRequestPluginFolderAgentAction}
                 onClick={() => void runAction(folder, "contribute")}
               >
                 <Icon
@@ -851,7 +840,7 @@ function PluginActionPanel({
                 />
                 <span>
                   {busyKey === `contribute:${folder.path}`
-                    ? "Preparing..."
+                    ? "Sending..."
                     : "Open Design PR"}
                 </span>
               </button>

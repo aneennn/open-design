@@ -73,16 +73,39 @@ export interface EnsureMarketplaceManifestInput {
 }
 
 const HTTPS_RE = /^https:\/\//i;
+const RAW_REGISTRY_BASE_URL =
+  'https://raw.githubusercontent.com/nexu-io/open-design/garnet-hemisphere/plugins/registry';
+const PUBLIC_MARKETPLACE_BASE_URL = 'https://open-design.ai/marketplace';
 
 function normalizeMarketplaceTrust(value: unknown): MarketplaceTrustTier {
   return value === 'official' || value === 'trusted' ? value : 'restricted';
+}
+
+function normalizeMarketplaceUrl(url: string): string {
+  const trimmed = url.trim();
+  if (trimmed === `${PUBLIC_MARKETPLACE_BASE_URL}/open-design-marketplace.json`) {
+    return `${RAW_REGISTRY_BASE_URL}/official/open-design-marketplace.json`;
+  }
+  if (
+    trimmed.startsWith(`${PUBLIC_MARKETPLACE_BASE_URL}/`) &&
+    trimmed.endsWith('/open-design-marketplace.json')
+  ) {
+    const id = trimmed
+      .slice(PUBLIC_MARKETPLACE_BASE_URL.length + 1)
+      .replace(/\/open-design-marketplace\.json$/, '');
+    if (id && !id.includes('/')) {
+      return `${RAW_REGISTRY_BASE_URL}/${id}/open-design-marketplace.json`;
+    }
+  }
+  return trimmed;
 }
 
 export async function addMarketplace(
   db: SqliteDb,
   input: AddMarketplaceInput,
 ): Promise<AddMarketplaceResult | AddMarketplaceFailure> {
-  if (!HTTPS_RE.test(input.url)) {
+  const url = normalizeMarketplaceUrl(input.url);
+  if (!HTTPS_RE.test(url)) {
     return {
       ok: false,
       status: 400,
@@ -92,7 +115,7 @@ export async function addMarketplace(
   const fetcher = input.fetcher ?? defaultFetcher;
   let resp;
   try {
-    resp = await fetcher(input.url);
+    resp = await fetcher(url);
   } catch (err) {
     return {
       ok: false,
@@ -123,12 +146,12 @@ export async function addMarketplace(
   db.prepare(
     `INSERT INTO plugin_marketplaces (id, url, spec_version, version, trust, manifest_json, added_at, refreshed_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(id, input.url, parsed.manifest.specVersion, parsed.manifest.version, trust, text, now, now);
+  ).run(id, url, parsed.manifest.specVersion, parsed.manifest.version, trust, text, now, now);
   return {
     ok: true,
     row: {
       id,
-      url: input.url,
+      url,
       specVersion: parsed.manifest.specVersion,
       version: parsed.manifest.version,
       trust,
@@ -279,9 +302,10 @@ export async function refreshMarketplace(
     return { ok: false, status: 404, message: `marketplace ${id} not found` };
   }
   const useFetcher = fetcher ?? defaultFetcher;
+  const url = normalizeMarketplaceUrl(existing.url);
   let resp;
   try {
-    resp = await useFetcher(existing.url);
+    resp = await useFetcher(url);
   } catch (err) {
     return { ok: false, status: 502, message: `Fetch failed: ${(err as Error).message ?? String(err)}` };
   }
@@ -292,12 +316,13 @@ export async function refreshMarketplace(
     return { ok: false, status: 422, message: 'marketplace manifest failed validation', errors: parsed.errors };
   }
   const now = Date.now();
-  db.prepare(`UPDATE plugin_marketplaces SET spec_version = ?, version = ?, manifest_json = ?, refreshed_at = ? WHERE id = ?`)
-    .run(parsed.manifest.specVersion, parsed.manifest.version, text, now, id);
+  db.prepare(`UPDATE plugin_marketplaces SET url = ?, spec_version = ?, version = ?, manifest_json = ?, refreshed_at = ? WHERE id = ?`)
+    .run(url, parsed.manifest.specVersion, parsed.manifest.version, text, now, id);
   return {
     ok: true,
     row: {
       ...existing,
+      url,
       specVersion: parsed.manifest.specVersion,
       version: parsed.manifest.version,
       manifest: parsed.manifest,
