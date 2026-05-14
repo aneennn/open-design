@@ -1,3 +1,5 @@
+import type { PluginUseAction } from '../plugins-home/useActions';
+
 export type HomePromptHandoff =
   | {
     id: number;
@@ -13,6 +15,7 @@ export type HomePromptHandoff =
     pluginId: string;
     focus: boolean;
     source: 'plugin-use';
+    action: PluginUseAction;
     inputs?: Record<string, unknown>;
   };
 
@@ -85,12 +88,16 @@ export function createPluginAuthoringHandoff(
 export function createPluginUseHandoff(
   id: number,
   pluginId: string,
-  inputs?: Record<string, unknown>,
+  options: {
+    action?: PluginUseAction;
+    inputs?: Record<string, unknown>;
+  } = {},
 ): HomePromptHandoff {
   return {
     id,
     pluginId,
-    ...(inputs ? { inputs } : {}),
+    action: options.action ?? 'use',
+    ...(options.inputs ? { inputs: options.inputs } : {}),
     focus: true,
     source: 'plugin-use',
   };

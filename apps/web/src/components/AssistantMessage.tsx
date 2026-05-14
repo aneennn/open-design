@@ -4,13 +4,22 @@ import { FileOpsSummary } from "./FileOpsSummary";
 import { renderMarkdown } from "../runtime/markdown";
 import { projectFileUrl } from "../providers/registry";
 import {
+  contributeGeneratedPluginToOpenDesign,
+  installGeneratedPluginFolder,
+  publishGeneratedPluginToGitHub,
+} from "../state/projects";
+import {
   splitOnQuestionForms,
   type QuestionForm,
 } from "../artifacts/question-form";
 import { QuestionFormView, parseSubmittedAnswers } from "./QuestionForm";
+import {
+  getPluginFolderCandidates,
+  type PluginFolderCandidate,
+} from "./design-files/pluginFolders";
 import { Icon } from "./Icon";
 import { useT } from "../i18n";
-import { deriveFileOps } from "../runtime/file-ops";
+import { deriveFileOps, type FileOpEntry } from "../runtime/file-ops";
 import { unfinishedTodosFromEvents, type TodoItem } from "../runtime/todos";
 import type { Dict } from "../i18n/types";
 import { agentDisplayName, exactAgentDisplayName } from "../utils/agentLabels";
@@ -30,6 +39,7 @@ interface Props {
   message: ChatMessage;
   streaming: boolean;
   projectId: string | null;
+  projectFiles?: ProjectFile[];
   projectFileNames?: Set<string>;
   onRequestOpenFile?: (name: string) => void;
   // True only for the most recent assistant message — gate question-form
@@ -59,6 +69,7 @@ export function AssistantMessage({
   message,
   streaming,
   projectId,
+  projectFiles = [],
   projectFileNames,
   onRequestOpenFile,
   isLast,
@@ -70,10 +81,17 @@ export function AssistantMessage({
   const events = message.events ?? [];
   const blocks = buildBlocks(events);
   const fileOps = useMemo(() => deriveFileOps(events), [events]);
+  const produced = message.producedFiles ?? [];
+  const pluginActionFolders = useMemo(
+    () =>
+      !streaming && isLast && projectId
+        ? pluginFoldersTouchedThisTurn(projectFiles, fileOps, produced)
+        : [],
+    [fileOps, isLast, produced, projectFiles, projectId, streaming],
+  );
   const usage = events.find((e) => e.kind === "usage") as
     | Extract<AgentEvent, { kind: "usage" }>
     | undefined;
-  const produced = message.producedFiles ?? [];
   const roleLabel = assistantRoleLabel(message, t);
   const unfinishedTodos = streaming ? [] : unfinishedTodosFromEvents(events);
   const canContinueTodos =
@@ -148,6 +166,13 @@ export function AssistantMessage({
         {!streaming && produced.length > 0 && projectId ? (
           <ProducedFiles
             files={produced}
+            projectId={projectId}
+            onRequestOpenFile={onRequestOpenFile}
+          />
+        ) : null}
+        {!streaming && projectId && pluginActionFolders.length > 0 ? (
+          <PluginActionPanel
+            folders={pluginActionFolders}
             projectId={projectId}
             onRequestOpenFile={onRequestOpenFile}
           />
@@ -360,6 +385,159 @@ function ProducedFiles({
   );
 }
 
+type PluginActionKind = "install" | "publish" | "contribute";
+
+function PluginActionPanel({
+  folders,
+  projectId,
+  onRequestOpenFile,
+}: {
+  folders: PluginFolderCandidate[];
+  projectId: string;
+  onRequestOpenFile?: (name: string) => void;
+}) {
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [noticeByFolder, setNoticeByFolder] = useState<Record<string, string>>(
+    {},
+  );
+
+  async function runAction(folder: PluginFolderCandidate, action: PluginActionKind) {
+    if (busyKey) return;
+    const key = `${action}:${folder.path}`;
+    setBusyKey(key);
+    setNoticeByFolder((prev) => {
+      const next = { ...prev };
+      delete next[folder.path];
+      return next;
+    });
+    try {
+      const outcome =
+        action === "install"
+          ? await installGeneratedPluginFolder(projectId, folder.path)
+          : action === "publish"
+            ? await publishGeneratedPluginToGitHub(projectId, folder.path)
+            : await contributeGeneratedPluginToOpenDesign(projectId, folder.path);
+      const fallback =
+        action === "install"
+          ? outcome.ok
+            ? "Installed plugin into My plugins."
+            : "Plugin install failed."
+          : outcome.ok
+            ? "Prepared plugin next step."
+            : "Plugin action failed.";
+      setNoticeByFolder((prev) => ({
+        ...prev,
+        [folder.path]: outcome.message ?? fallback,
+      }));
+      if (action !== "install" && "url" in outcome && outcome.url) {
+        window.open(outcome.url, "_blank", "noopener,noreferrer");
+      }
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  return (
+    <div className="plugin-action-panel" aria-label="Plugin next actions">
+      <div className="plugin-action-panel__head">
+        <span className="plugin-action-panel__icon" aria-hidden>
+          <Icon name="sparkles" size={15} />
+        </span>
+        <div>
+          <div className="plugin-action-panel__title">Plugin ready</div>
+          <div className="plugin-action-panel__subtitle">
+            Choose what to do with the generated plugin folder.
+          </div>
+        </div>
+      </div>
+      <div className="plugin-action-panel__list">
+        {folders.map((folder) => (
+          <div
+            key={folder.path}
+            className="plugin-action-card"
+            data-testid={`assistant-plugin-actions-${folder.path}`}
+          >
+            <div className="plugin-action-card__main">
+              <span className="plugin-action-card__folder-icon" aria-hidden>
+                <Icon name="folder" size={14} />
+              </span>
+              <div className="plugin-action-card__copy">
+                <code className="plugin-action-card__path">{folder.path}</code>
+                <span>{folder.fileCount} files ready for My plugins</span>
+              </div>
+            </div>
+            <div className="plugin-action-card__actions">
+              <button
+                type="button"
+                className="plugin-action-button plugin-action-button--primary"
+                data-testid={`assistant-plugin-install-${folder.path}`}
+                disabled={busyKey !== null}
+                onClick={() => void runAction(folder, "install")}
+              >
+                <Icon
+                  name={busyKey === `install:${folder.path}` ? "spinner" : "plus"}
+                  size={13}
+                />
+                <span>
+                  {busyKey === `install:${folder.path}` ? "Adding..." : "Add to My plugins"}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="plugin-action-button"
+                data-testid={`assistant-plugin-publish-${folder.path}`}
+                disabled={busyKey !== null}
+                onClick={() => void runAction(folder, "publish")}
+              >
+                <Icon
+                  name={busyKey === `publish:${folder.path}` ? "spinner" : "github"}
+                  size={13}
+                />
+                <span>
+                  {busyKey === `publish:${folder.path}` ? "Publishing..." : "Publish repo"}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="plugin-action-button"
+                data-testid={`assistant-plugin-contribute-${folder.path}`}
+                disabled={busyKey !== null}
+                onClick={() => void runAction(folder, "contribute")}
+              >
+                <Icon
+                  name={busyKey === `contribute:${folder.path}` ? "spinner" : "share"}
+                  size={13}
+                />
+                <span>
+                  {busyKey === `contribute:${folder.path}`
+                    ? "Preparing..."
+                    : "Open Design PR"}
+                </span>
+              </button>
+              {onRequestOpenFile ? (
+                <button
+                  type="button"
+                  className="plugin-action-button"
+                  data-testid={`assistant-plugin-open-manifest-${folder.path}`}
+                  onClick={() => onRequestOpenFile(folder.manifestPath)}
+                >
+                  <Icon name="file-code" size={13} />
+                  <span>Open manifest</span>
+                </button>
+              ) : null}
+            </div>
+            {noticeByFolder[folder.path] ? (
+              <div className="plugin-action-card__notice" role="status">
+                {noticeByFolder[folder.path]}
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function kindIconName(
   kind: ProjectFile["kind"]
 ): "file-code" | "image" | "pencil" | "file" {
@@ -374,6 +552,31 @@ function humanBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function pluginFoldersTouchedThisTurn(
+  projectFiles: ProjectFile[],
+  fileOps: FileOpEntry[],
+  produced: ProjectFile[],
+): PluginFolderCandidate[] {
+  const candidates = getPluginFolderCandidates(projectFiles);
+  if (candidates.length === 0) return [];
+  const touchedPaths = [
+    ...fileOps.flatMap((entry) => [entry.path, entry.fullPath]),
+    ...produced.flatMap((file) => [file.name, file.path]),
+  ].filter((path): path is string => typeof path === "string" && path.length > 0);
+  if (touchedPaths.length === 0) return [];
+  return candidates.filter((folder) =>
+    touchedPaths.some((path) => pathTouchesFolder(path, folder.path)),
+  );
+}
+
+function pathTouchesFolder(path: string, folderPath: string): boolean {
+  const normalized = path.replace(/\\/g, "/").replace(/^\.\//, "");
+  if (normalized === folderPath || normalized.startsWith(`${folderPath}/`)) {
+    return true;
+  }
+  return normalized.includes(`/${folderPath}/`);
 }
 
 /**

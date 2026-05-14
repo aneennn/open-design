@@ -62,6 +62,36 @@ const MCP_SERVER = {
   command: 'slack-mcp',
 };
 
+const APPLY_RESULT = {
+  ok: true,
+  query: 'Run plugin.',
+  contextItems: [],
+  inputs: [],
+  assets: [],
+  mcpServers: [],
+  trust: 'restricted',
+  capabilitiesGranted: ['prompt:inject'],
+  capabilitiesRequired: ['prompt:inject'],
+  appliedPlugin: {
+    snapshotId: 'snap-1',
+    pluginId: USER_PLUGIN.id,
+    pluginVersion: '1.0.0',
+    manifestSourceDigest: 'a'.repeat(64),
+    inputs: {},
+    resolvedContext: { items: [] },
+    capabilitiesGranted: ['prompt:inject'],
+    capabilitiesRequired: ['prompt:inject'],
+    assetsStaged: [],
+    taskKind: 'new-generation',
+    appliedAt: 0,
+    connectorsRequired: [],
+    connectorsResolved: [],
+    mcpServers: [],
+    status: 'fresh',
+  },
+  projectMetadata: {},
+};
+
 let fetchMock: ReturnType<typeof vi.fn>;
 let plugins = [COMMUNITY_PLUGIN, USER_PLUGIN];
 let skills = [SKILL];
@@ -95,6 +125,12 @@ beforeEach(() => {
     }
     if (url === '/api/plugins') {
       return new Response(JSON.stringify({ plugins }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    if (url.includes('/api/plugins/') && url.endsWith('/apply')) {
+      return new Response(JSON.stringify(APPLY_RESULT), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
@@ -140,7 +176,7 @@ describe('ChatComposer context pickers', () => {
     expect(screen.getByText('Search plugins, skills, MCP servers, and Design Files.')).toBeTruthy();
   });
 
-  it('selects an MCP server from @ search and inserts a tool hint', async () => {
+  it('selects an MCP server from @ search and keeps the inline token visible', async () => {
     renderComposer();
     const input = screen.getByTestId('chat-composer-input') as HTMLTextAreaElement;
 
@@ -151,7 +187,8 @@ describe('ChatComposer context pickers', () => {
     await waitFor(() => expect(screen.getByText('Slack MCP')).toBeTruthy());
     fireEvent.click(screen.getByText('Slack MCP'));
 
-    expect(input.value).toBe('Use the `slack` MCP server tools. ');
+    expect(input.value).toBe('@Slack MCP ');
+    expect(screen.getByTestId('chat-composer-mention-overlay').textContent).toContain('@Slack MCP');
   });
 
   it('applies a skill from @ search and reports the active project skill', async () => {
@@ -167,7 +204,23 @@ describe('ChatComposer context pickers', () => {
     fireEvent.click(screen.getByText('Deck Builder'));
 
     await waitFor(() => expect(onProjectSkillChange).toHaveBeenCalledWith('deck-builder'));
-    expect(input.value).toBe('Use the @deck-builder skill. ');
+    expect(input.value).toBe('@Deck Builder ');
+    expect(screen.getByTestId('chat-composer-mention-overlay').textContent).toContain('@Deck Builder');
+  });
+
+  it('applies a plugin from @ search and keeps the plugin token inline', async () => {
+    renderComposer();
+    const input = screen.getByTestId('chat-composer-input') as HTMLTextAreaElement;
+
+    fireEvent.change(input, {
+      target: { value: '@export', selectionStart: 7 },
+    });
+
+    await waitFor(() => expect(screen.getByText('My Export')).toBeTruthy());
+    fireEvent.click(screen.getByText('My Export'));
+
+    await waitFor(() => expect(input.value).toBe('@My Export '));
+    expect(screen.getByTestId('chat-composer-mention-overlay').textContent).toContain('@My Export');
   });
 
   it('lets the tools panel switch between Official and My plugins', async () => {

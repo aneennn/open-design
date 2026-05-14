@@ -12,12 +12,13 @@
 // gallery-clean while the active state surfaces everything the user
 // needs to commit.
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { InstalledPluginRecord } from '@open-design/contracts';
 import type { PluginShareAction } from '../../state/projects';
 import { Icon } from '../Icon';
 import { PreviewSurface } from './cards/PreviewSurface';
 import { inferPluginPreview } from './preview';
+import type { PluginUseAction } from './useActions';
 
 interface Props {
   record: InstalledPluginRecord;
@@ -26,7 +27,7 @@ interface Props {
   pendingAny: boolean;
   pendingShareAction?: { pluginId: string; action: PluginShareAction } | null;
   isFeatured: boolean;
-  onUse: (record: InstalledPluginRecord) => void;
+  onUse: (record: InstalledPluginRecord, action: PluginUseAction) => void;
   onOpenDetails: (record: InstalledPluginRecord) => void;
   onShareAction?: (
     record: InstalledPluginRecord,
@@ -47,6 +48,7 @@ export function PluginCard({
   onOpenDetails,
   onShareAction,
 }: Props) {
+  const [useMenuOpen, setUseMenuOpen] = useState(false);
   const preview = useMemo(() => inferPluginPreview(record), [record]);
   const description = record.manifest?.description ?? '';
   const tags = useMemo(
@@ -60,6 +62,12 @@ export function PluginCard({
   const sharePendingAction =
     pendingShareAction?.pluginId === record.id ? pendingShareAction.action : null;
   const shareBusy = sharePendingAction !== null;
+  const useDisabled = isPending || pendingAny || shareBusy;
+
+  function pickUseAction(action: PluginUseAction) {
+    setUseMenuOpen(false);
+    onUse(record, action);
+  }
 
   return (
     <article
@@ -123,24 +131,70 @@ export function PluginCard({
               <Icon name="eye" size={12} />
               <span>Details</span>
             </button>
-            <button
-              type="button"
-              className="plugins-home__action plugins-home__action--primary"
-              onClick={() => onUse(record)}
-              disabled={isPending || pendingAny || shareBusy}
-              aria-busy={isPending ? 'true' : undefined}
-              data-testid={`plugins-home-use-${record.id}`}
+            <div
+              className={`plugins-home__use-menu${hasQuery ? ' has-options' : ''}`}
+              onBlur={(event) => {
+                const nextTarget = event.relatedTarget;
+                if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
+                  setUseMenuOpen(false);
+                }
+              }}
             >
-              {isPending
-                ? 'Applying…'
-                : hasQuery
-                  ? isActive
-                    ? 'Reload'
-                    : 'Use'
-                  : isActive
-                    ? 'Active'
-                    : 'Use'}
-            </button>
+              <button
+                type="button"
+                className="plugins-home__action plugins-home__action--primary plugins-home__use-main"
+                onClick={() => pickUseAction('use')}
+                disabled={useDisabled}
+                aria-busy={isPending ? 'true' : undefined}
+                data-testid={`plugins-home-use-${record.id}`}
+              >
+                {isPending ? 'Applying…' : 'Use'}
+              </button>
+              {hasQuery ? (
+                <>
+                  <button
+                    type="button"
+                    className="plugins-home__action plugins-home__action--primary plugins-home__use-toggle"
+                    onClick={() => setUseMenuOpen((open) => !open)}
+                    disabled={useDisabled}
+                    aria-haspopup="menu"
+                    aria-expanded={useMenuOpen}
+                    aria-label={`Choose how to use ${record.title}`}
+                    data-testid={`plugins-home-use-menu-${record.id}`}
+                  >
+                    <Icon name="chevron-down" size={13} />
+                  </button>
+                  {useMenuOpen ? (
+                    <div
+                      className="plugins-home__use-menu-list"
+                      role="menu"
+                      aria-label={`Use options for ${record.title}`}
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="plugins-home__use-menu-item"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => pickUseAction('use')}
+                        data-testid={`plugins-home-use-context-${record.id}`}
+                      >
+                        Use
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="plugins-home__use-menu-item"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => pickUseAction('use-with-query')}
+                        data-testid={`plugins-home-use-with-query-${record.id}`}
+                      >
+                        Use with query
+                      </button>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
           </div>
           {onShareAction ? (
             <div

@@ -100,15 +100,15 @@ describe('HomeView context picker', () => {
     fireEvent.mouseDown(await screen.findByRole('option', { name: /chart plugin/i }));
 
     await waitFor(() => {
-      expect((input as HTMLTextAreaElement).value).toBe('Build');
+      expect((input as HTMLTextAreaElement).value).toBe('Build @Chart Plugin');
       expect(screen.getByTestId('home-hero-context-plugin-chart-plugin')).toBeTruthy();
     });
 
-    fireEvent.change(input, { target: { value: 'Build @deck' } });
+    fireEvent.change(input, { target: { value: `${(input as HTMLTextAreaElement).value} @deck` } });
     fireEvent.mouseDown(await screen.findByRole('option', { name: /deck plugin/i }));
 
     await waitFor(() => {
-      expect((input as HTMLTextAreaElement).value).toBe('Build');
+      expect((input as HTMLTextAreaElement).value).toBe('Build @Chart Plugin @Deck Plugin');
       expect(screen.getByTestId('home-hero-context-plugin-chart-plugin')).toBeTruthy();
       expect(screen.getByTestId('home-hero-context-plugin-deck-plugin')).toBeTruthy();
     });
@@ -118,7 +118,7 @@ describe('HomeView context picker', () => {
     fireEvent.click(screen.getByTestId('home-hero-submit'));
 
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: 'Build',
+      prompt: 'Build @Chart Plugin @Deck Plugin',
       pluginId: DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID,
       contextPlugins: [
         expect.objectContaining({ id: 'chart-plugin', title: 'Chart Plugin' }),
@@ -165,14 +165,14 @@ describe('HomeView context picker', () => {
     fireEvent.mouseDown(screen.getByRole('option', { name: /prototype lab/i }));
 
     await waitFor(() => {
-      expect((input as HTMLTextAreaElement).value).toBe(SKILL.examplePrompt);
+      expect((input as HTMLTextAreaElement).value).toBe('@Prototype Lab');
       expect(screen.getByTestId('home-hero-active-skill')).toBeTruthy();
     });
 
     fireEvent.click(screen.getByTestId('home-hero-submit'));
 
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: SKILL.examplePrompt,
+      prompt: '@Prototype Lab',
       pluginId: DEFAULT_UNSELECTED_SCENARIO_PLUGIN_ID,
       skillId: SKILL.id,
       projectKind: 'prototype',

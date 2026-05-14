@@ -24,6 +24,11 @@ import { Icon } from "./Icon";
 import { PluginDetailsModal } from "./PluginDetailsModal";
 import { PluginsSection, type PluginsSectionHandle } from "./PluginsSection";
 import { BUILT_IN_PETS, CUSTOM_PET_ID, resolveActivePet } from "./pet/pets";
+import {
+  buildInlineMentionParts,
+  inlineMentionToken,
+  type InlineMentionEntity,
+} from '../utils/inlineMentions';
 
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
 
@@ -156,6 +161,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       q: string;
       cursor: number;
     } | null>(null);
+    const [composerScrollTop, setComposerScrollTop] = useState(0);
     // Slash-command popover state — when the draft starts with `/` and
     // the cursor is still inside that token (no space committed yet),
     // we show a small palette of supported commands. The query is the
@@ -293,6 +299,24 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       () => mcpServers.filter((s) => s.enabled),
       [mcpServers],
     );
+    const composerMentionEntities = useMemo(
+      () =>
+        buildComposerMentionEntities({
+          files: projectFiles,
+          mcpServers: enabledMcpServers,
+          plugins: pluginsForComposer,
+          skills,
+          staged,
+        }),
+      [enabledMcpServers, pluginsForComposer, projectFiles, skills, staged],
+    );
+    const composerMentionParts = useMemo(
+      () => buildInlineMentionParts(draft, composerMentionEntities),
+      [composerMentionEntities, draft],
+    );
+    useEffect(() => {
+      setComposerScrollTop(textareaRef.current?.scrollTop ?? 0);
+    }, [composerMentionParts, draft]);
 
     // Resolve which tabs to surface in the consolidated tools popover.
     // Plugins is always visible while a project is active so users can
@@ -686,31 +710,13 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     }
 
     async function insertPluginMention(record: InstalledPluginRecord) {
-      if (!mention) return;
-      const ta = textareaRef.current;
-      const cursor = mention.cursor;
-      const before = draft.slice(0, cursor);
-      const after = draft.slice(cursor);
-      // Strip the @<query> token entirely — picking a plugin applies it
-      // as context (a chip lands in PluginsSection's active block), so
-      // there is no useful token to leave inline. Keep a single space
-      // if the surrounding context expects one to avoid mashing words
-      // together.
-      const stripped = before.replace(/(^|\s)@([^\s@]*)$/, '$1');
-      const next = stripped + after;
-      setDraft(next);
-      setMention(null);
+      const inserted = replaceMentionWithText(`${inlineMentionToken(record.title)} `);
+      if (!inserted) return;
       await pluginsSectionRef.current?.applyById(record.id, record);
-      requestAnimationFrame(() => {
-        if (!ta) return;
-        ta.focus();
-        const pos = stripped.length;
-        ta.setSelectionRange(pos, pos);
-      });
     }
 
-    function replaceMentionWithText(text: string) {
-      if (!mention) return;
+    function replaceMentionWithText(text: string): boolean {
+      if (!mention) return false;
       const ta = textareaRef.current;
       const cursor = mention.cursor;
       const before = draft.slice(0, cursor);
@@ -725,10 +731,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         const pos = replaced.length;
         ta.setSelectionRange(pos, pos);
       });
+      return true;
     }
 
     function insertMcpMention(server: McpServerConfig) {
-      replaceMentionWithText(`Use the \`${server.id}\` MCP server tools. `);
+      replaceMentionWithText(`${inlineMentionToken(server.label || server.id)} `);
     }
 
     async function applyProjectSkill(skill: SkillSummary): Promise<boolean> {
@@ -742,7 +749,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     async function insertSkillMention(skill: SkillSummary) {
       const applied = await applyProjectSkill(skill);
       if (!applied) return;
-      replaceMentionWithText(`Use the @${skill.id} skill. `);
+      replaceMentionWithText(`${inlineMentionToken(skill.name)} `);
     }
 
     function removeStaged(p: string) {
@@ -781,9 +788,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     }
 
     // The @-picker offers a unified search across context surfaces:
-    // project files, plugins, active MCP servers, and skills. Plugins and
-    // skills are applied as project context; files keep the inline @path
-    // token because agents already understand file references there.
+    // project files, plugins, active MCP servers, and skills. Picked
+    // entities keep an inline @ token for orientation while richer
+    // context is still applied behind the scenes when available.
     const mentionQuery = mention ? mention.q.toLowerCase() : '';
     const filteredFiles = mention
       ? projectFiles
@@ -919,50 +926,84 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
               }}
             />
           ) : null}
-          <div className="composer-input-wrap">
-            <textarea
-              ref={textareaRef}
-              data-testid="chat-composer-input"
-              value={draft}
-              placeholder={t('chat.composerPlaceholder')}
-              onChange={handleChange}
-              onPaste={handlePaste}
-              onKeyDown={(e) => {
-                if (slash && filteredSlash.length > 0) {
-                  if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    setSlashIndex((i) => (i + 1) % filteredSlash.length);
+          <div
+            className={`composer-input-wrap${
+              composerMentionParts ? ' has-mention-overlay' : ''
+            }`}
+          >
+            <div className="composer-textarea-layer">
+              {composerMentionParts ? (
+                <div
+                  className="composer-input-overlay"
+                  data-testid="chat-composer-mention-overlay"
+                  aria-hidden="true"
+                  style={{ ['--composer-input-scroll' as string]: `${composerScrollTop}px` }}
+                >
+                  <div className="composer-input-overlay-inner">
+                    {composerMentionParts.map((part, index) =>
+                      part.kind === 'mention' ? (
+                        <span
+                          key={`${part.entity.kind}-${part.entity.id}-${index}`}
+                          className={`composer-inline-mention composer-inline-mention--${part.entity.kind}`}
+                          title={part.entity.title ?? part.text}
+                        >
+                          {part.text}
+                        </span>
+                      ) : (
+                        <span key={`text-${index}`}>{part.text}</span>
+                      ),
+                    )}
+                  </div>
+                </div>
+              ) : null}
+              <textarea
+                ref={textareaRef}
+                data-testid="chat-composer-input"
+                value={draft}
+                placeholder={t('chat.composerPlaceholder')}
+                spellCheck={false}
+                onChange={handleChange}
+                onPaste={handlePaste}
+                onScroll={(event) => {
+                  setComposerScrollTop(event.currentTarget.scrollTop);
+                }}
+                onKeyDown={(e) => {
+                  if (slash && filteredSlash.length > 0) {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setSlashIndex((i) => (i + 1) % filteredSlash.length);
+                      return;
+                    }
+                    if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setSlashIndex(
+                        (i) => (i - 1 + filteredSlash.length) % filteredSlash.length,
+                      );
+                      return;
+                    }
+                    if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey)) {
+                      e.preventDefault();
+                      const safe = Math.min(slashIndex, filteredSlash.length - 1);
+                      pickSlash(filteredSlash[safe]!);
+                      return;
+                    }
+                    if (e.key === 'Escape') {
+                      e.preventDefault();
+                      setSlash(null);
+                      return;
+                    }
+                  }
+                  if (mention && e.key === "Escape") {
+                    setMention(null);
                     return;
                   }
-                  if (e.key === 'ArrowUp') {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                     e.preventDefault();
-                    setSlashIndex(
-                      (i) => (i - 1 + filteredSlash.length) % filteredSlash.length,
-                    );
-                    return;
+                    void submit();
                   }
-                  if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey)) {
-                    e.preventDefault();
-                    const safe = Math.min(slashIndex, filteredSlash.length - 1);
-                    pickSlash(filteredSlash[safe]!);
-                    return;
-                  }
-                  if (e.key === 'Escape') {
-                    e.preventDefault();
-                    setSlash(null);
-                    return;
-                  }
-                }
-                if (mention && e.key === "Escape") {
-                  setMention(null);
-                  return;
-                }
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault();
-                  void submit();
-                }
-              }}
-            />
+                }}
+              />
+            </div>
             {mention ? (
               <MentionPopover
                 files={filteredFiles}
@@ -1099,7 +1140,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                         templates={mcpTemplates}
                         onInsert={(serverId) => {
                           const ta = textareaRef.current;
-                          const insert = `Use the \`${serverId}\` MCP server tools. `;
+                          const server = enabledMcpServers.find((item) => item.id === serverId);
+                          const insert = `${inlineMentionToken(server?.label || serverId)} `;
                           const cursor = ta?.selectionStart ?? draft.length;
                           const before = draft.slice(0, cursor);
                           const after = draft.slice(cursor);
@@ -1220,6 +1262,93 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     );
   }
 );
+
+function buildComposerMentionEntities({
+  files,
+  mcpServers,
+  plugins,
+  skills,
+  staged,
+}: {
+  files: ProjectFile[];
+  mcpServers: McpServerConfig[];
+  plugins: InstalledPluginRecord[];
+  skills: SkillSummary[];
+  staged: ChatAttachment[];
+}): InlineMentionEntity[] {
+  const entities: InlineMentionEntity[] = [];
+  for (const plugin of plugins) {
+    entities.push({
+      id: plugin.id,
+      kind: 'plugin',
+      label: plugin.title,
+      token: inlineMentionToken(plugin.title),
+      title: `Plugin: ${plugin.title}`,
+    });
+  }
+  for (const skill of skills) {
+    entities.push({
+      id: skill.id,
+      kind: 'skill',
+      label: skill.name,
+      token: inlineMentionToken(skill.name),
+      title: `Skill: ${skill.name}`,
+    });
+    if (skill.id !== skill.name) {
+      entities.push({
+        id: skill.id,
+        kind: 'skill',
+        label: skill.id,
+        token: inlineMentionToken(skill.id),
+        title: `Skill: ${skill.name}`,
+      });
+    }
+  }
+  for (const server of mcpServers) {
+    const label = server.label || server.id;
+    entities.push({
+      id: server.id,
+      kind: 'mcp',
+      label,
+      token: inlineMentionToken(label),
+      title: `MCP: ${label}`,
+    });
+    if (server.id !== label) {
+      entities.push({
+        id: server.id,
+        kind: 'mcp',
+        label: server.id,
+        token: inlineMentionToken(server.id),
+        title: `MCP: ${label}`,
+      });
+    }
+  }
+  const filePaths = new Set<string>();
+  for (const file of files) {
+    const path = file.path ?? file.name;
+    if (!path || filePaths.has(path)) continue;
+    filePaths.add(path);
+    entities.push({
+      id: path,
+      kind: 'file',
+      label: path,
+      token: inlineMentionToken(path),
+      title: `File: ${path}`,
+    });
+  }
+  for (const attachment of staged) {
+    if (!attachment.path || filePaths.has(attachment.path)) continue;
+    filePaths.add(attachment.path);
+    entities.push({
+      id: attachment.path,
+      kind: 'file',
+      label: attachment.path,
+      token: inlineMentionToken(attachment.path),
+      title: `File: ${attachment.path}`,
+    });
+  }
+  return entities;
+}
 
 function StagedAttachments({
   attachments,

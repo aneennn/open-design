@@ -882,6 +882,59 @@ a.avatar-item:visited {
   display: flex;
   flex-direction: column;
 }
+.composer-textarea-layer {
+  position: relative;
+  min-height: 60px;
+}
+.composer-input-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  min-height: 60px;
+  padding: 0;
+  color: var(--text);
+  font: inherit;
+  line-height: normal;
+  pointer-events: none;
+  white-space: pre-wrap;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.composer-input-overlay-inner {
+  min-height: 100%;
+  padding: 4px;
+  transform: translateY(calc(-1 * var(--composer-input-scroll, 0px)));
+}
+.composer-input-wrap.has-mention-overlay textarea {
+  color: transparent;
+  caret-color: var(--text);
+}
+.composer-input-wrap.has-mention-overlay textarea::selection {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  color: transparent;
+}
+.composer-inline-mention {
+  display: inline-flex;
+  align-items: center;
+  max-width: min(100%, 34ch);
+  margin: 0 1px;
+  padding: 0 3px 1px;
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  color: color-mix(in srgb, var(--accent) 62%, var(--text));
+  font: inherit;
+  font-size: 0.92em;
+  font-weight: inherit;
+  line-height: 1.22;
+  letter-spacing: inherit;
+  vertical-align: baseline;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .composer-row {
   display: flex;
   align-items: center;

@@ -28,6 +28,7 @@ import { Icon } from './Icon';
 import { PluginDetailsModal } from './PluginDetailsModal';
 import { PluginsHomeSection } from './PluginsHomeSection';
 import { useI18n } from '../i18n';
+import type { PluginUseAction } from './plugins-home/useActions';
 
 type PluginsTab = 'installed' | 'available' | 'sources' | 'team';
 
@@ -89,7 +90,7 @@ const PLUGIN_SHARE_DETAILS: Record<PluginShareAction, {
 
 interface PluginsViewProps {
   onCreatePlugin?: (goal?: string) => void;
-  onUsePlugin?: (record: InstalledPluginRecord) => void;
+  onUsePlugin?: (record: InstalledPluginRecord, action: PluginUseAction) => void;
   onCreatePluginShareProject?: (
     pluginId: string,
     action: PluginShareAction,
@@ -165,10 +166,13 @@ export function PluginsView({
     return outcome;
   }
 
-  async function handleUsePlugin(record: InstalledPluginRecord) {
+  async function handleUsePlugin(
+    record: InstalledPluginRecord,
+    action: PluginUseAction = 'use',
+  ) {
     if (onUsePlugin) {
       setDetailsRecord(null);
-      onUsePlugin(record);
+      onUsePlugin(record, action);
       return;
     }
     setPendingApplyId(record.id);
@@ -331,7 +335,7 @@ export function PluginsView({
             activePluginId={activePlugin?.record.id ?? null}
             pendingApplyId={pendingApplyId}
             pendingShareAction={pendingShareAction}
-            onUse={(record) => void handleUsePlugin(record)}
+            onUse={(record, action) => void handleUsePlugin(record, action)}
             onOpenDetails={setDetailsRecord}
             onPluginShareAction={(record, action) =>
               requestPluginShareTask(record, action)
@@ -349,7 +353,6 @@ export function PluginsView({
             plugins={availablePlugins}
             pendingKey={pendingInstallEntry}
             onInstall={(plugin) => void handleInstallAvailable(plugin)}
-            onOpenInstalled={setDetailsRecord}
           />
         ) : null}
 
@@ -385,7 +388,7 @@ export function PluginsView({
         <PluginDetailsModal
           record={detailsRecord}
           onClose={() => setDetailsRecord(null)}
-          onUse={(record) => void handleUsePlugin(record)}
+          onUse={(record) => void handleUsePlugin(record, 'use')}
           isApplying={pendingApplyId === detailsRecord.id}
         />
       ) : null}
@@ -625,20 +628,26 @@ interface AvailableMarketplacePlugin {
   key: string;
   marketplace: PluginMarketplace;
   entry: PluginMarketplaceEntry;
-  installed: InstalledPluginRecord | null;
 }
 
 function AvailablePluginsPanel({
   plugins,
   pendingKey,
   onInstall,
-  onOpenInstalled,
 }: {
   plugins: AvailableMarketplacePlugin[];
   pendingKey: string | null;
   onInstall: (plugin: AvailableMarketplacePlugin) => void;
-  onOpenInstalled: (record: InstalledPluginRecord) => void;
 }) {
+  const [query, setQuery] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const sourceOptions = useMemo(() => buildAvailableSourceOptions(plugins), [plugins]);
+  const filteredPlugins = useMemo(
+    () => filterAvailablePlugins(plugins, { query, sourceFilter }),
+    [plugins, query, sourceFilter],
+  );
+  const filterActive = query.trim().length > 0 || sourceFilter !== 'all';
+
   return (
     <section className="plugins-view__section" aria-labelledby="plugins-available-title">
       <div className="plugins-view__section-head">
@@ -646,19 +655,68 @@ function AvailablePluginsPanel({
           <h2 id="plugins-available-title">Available from sources</h2>
           <p>Catalog entries discovered from configured marketplaces.</p>
         </div>
-        <span className="plugins-view__section-count">{plugins.length}</span>
+        <span className="plugins-view__section-count">
+          {filteredPlugins.length === plugins.length
+            ? plugins.length
+            : `${filteredPlugins.length} of ${plugins.length}`}
+        </span>
       </div>
+      {plugins.length > 0 ? (
+        <div className="plugins-view__available-controls" aria-label="Available plugin filters">
+          <div className="plugins-view__search">
+            <Icon name="search" size={13} className="plugins-view__search-icon" />
+            <input
+              id="plugins-available-search"
+              type="search"
+              aria-label="Search available plugins"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search available plugins"
+            />
+            {query ? (
+              <button
+                type="button"
+                className="plugins-view__search-clear"
+                onClick={() => setQuery('')}
+                aria-label="Clear available plugin search"
+                title="Clear search"
+              >
+                <Icon name="close" size={11} />
+              </button>
+            ) : null}
+          </div>
+          <label className="plugins-view__filter" htmlFor="plugins-available-source">
+            <span>Source</span>
+            <select
+              id="plugins-available-source"
+              value={sourceFilter}
+              onChange={(event) => setSourceFilter(event.target.value)}
+            >
+              <option value="all">All sources</option>
+              {sourceOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      ) : null}
       {plugins.length === 0 ? (
         <div className="plugins-view__empty">
-          No available entries yet. Add a source in the Sources tab.
+          No available entries yet. Installed catalog entries live in Installed;
+          uninstall one to make it available again.
+        </div>
+      ) : filteredPlugins.length === 0 ? (
+        <div className="plugins-view__empty">
+          {filterActive
+            ? 'No available entries match your filters.'
+            : 'No available entries yet. Add a source in the Sources tab.'}
         </div>
       ) : (
         <div className="plugins-view__available-list">
-          {plugins.map((plugin) => {
+          {filteredPlugins.map((plugin) => {
             const title = plugin.entry.title ?? plugin.entry.name;
-            const installedSameVersion =
-              plugin.installed &&
-              (!plugin.entry.version || plugin.installed.version === plugin.entry.version);
             return (
               <article key={plugin.key} className="plugins-view__available-card">
                 <div className="plugins-view__available-main">
@@ -679,38 +737,15 @@ function AvailablePluginsPanel({
                   </div>
                 </div>
                 <div className="plugins-view__row-actions">
-                  {plugin.installed ? (
-                    <button
-                      type="button"
-                      className="plugins-view__secondary"
-                      onClick={() => onOpenInstalled(plugin.installed!)}
-                    >
-                      Details
-                    </button>
-                  ) : null}
-                  {plugin.installed && installedSameVersion ? (
-                    <button
-                      type="button"
-                      className="plugins-view__secondary"
-                      disabled
-                    >
-                      Installed
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="plugins-view__primary"
-                      onClick={() => onInstall(plugin)}
-                      disabled={pendingKey === plugin.key}
-                      data-testid={`plugins-available-install-${plugin.entry.name}`}
-                    >
-                      {pendingKey === plugin.key
-                        ? 'Installing…'
-                        : plugin.installed
-                          ? 'Upgrade'
-                          : 'Install'}
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    className="plugins-view__primary"
+                    onClick={() => onInstall(plugin)}
+                    disabled={pendingKey === plugin.key}
+                    data-testid={`plugins-available-install-${plugin.entry.name}`}
+                  >
+                    {pendingKey === plugin.key ? 'Installing…' : 'Install'}
+                  </button>
                 </div>
               </article>
             );
@@ -1103,19 +1138,75 @@ function buildAvailablePlugins(
   }
   return marketplaces.flatMap((marketplace) => {
     const entries = marketplace.manifest.plugins ?? [];
-    return entries.map((entry) => {
+    return entries.flatMap((entry) => {
       const installedPlugin = installedByName.get(normalizePluginName(entry.name)) ?? null;
-      const sameVersion =
-        installedPlugin &&
-        (!entry.version || installedPlugin.version === entry.version);
-      return {
+      if (installedPlugin) return [];
+      return [{
         key: `${marketplace.id}:${entry.name}:${entry.version ?? ''}`,
         marketplace,
         entry,
-        installed: installedPlugin,
-      };
+      }];
     });
   });
+}
+
+interface AvailableSourceOption {
+  id: string;
+  label: string;
+}
+
+function buildAvailableSourceOptions(plugins: AvailableMarketplacePlugin[]): AvailableSourceOption[] {
+  const byId = new Map<string, AvailableSourceOption>();
+  for (const plugin of plugins) {
+    if (byId.has(plugin.marketplace.id)) continue;
+    byId.set(plugin.marketplace.id, {
+      id: plugin.marketplace.id,
+      label: plugin.marketplace.manifest.name ?? plugin.marketplace.url,
+    });
+  }
+  return Array.from(byId.values()).sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function filterAvailablePlugins(
+  plugins: AvailableMarketplacePlugin[],
+  filters: { query: string; sourceFilter: string },
+): AvailableMarketplacePlugin[] {
+  const terms = filters.query
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+  return plugins.filter((plugin) => {
+    if (filters.sourceFilter !== 'all' && plugin.marketplace.id !== filters.sourceFilter) {
+      return false;
+    }
+    if (terms.length === 0) return true;
+    const haystack = availablePluginSearchText(plugin);
+    return terms.every((term) => haystack.includes(term));
+  });
+}
+
+function availablePluginSearchText(plugin: AvailableMarketplacePlugin): string {
+  const { entry, marketplace } = plugin;
+  const parts = [
+    entry.name,
+    entry.title,
+    entry.description,
+    entry.source,
+    entry.version,
+    entry.homepage,
+    entry.license,
+    entry.publisher?.id,
+    entry.publisher?.github,
+    entry.publisher?.url,
+    marketplace.id,
+    marketplace.url,
+    marketplace.trust,
+    marketplace.manifest.name,
+    ...(entry.tags ?? []),
+    ...(entry.capabilitiesSummary ?? []),
+  ];
+  return parts.filter((part): part is string => typeof part === 'string').join(' ').toLowerCase();
 }
 
 function pluginLookupKeys(plugin: InstalledPluginRecord): string[] {

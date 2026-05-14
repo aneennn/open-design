@@ -7,8 +7,8 @@
 // composed with the recent-projects strip and plugins section
 // without owning their data lifecycles.
 
-import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ForwardedRef, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { InputFieldSpec, InstalledPluginRecord, McpServerConfig } from '@open-design/contracts';
 import type { SkillSummary } from '../types';
 import { Icon, type IconName } from './Icon';
@@ -18,6 +18,11 @@ import {
   type ChipGroup,
   type HomeHeroChip,
 } from './home-hero/chips';
+import {
+  buildInlineMentionParts,
+  inlineMentionToken,
+  type InlineMentionEntity,
+} from '../utils/inlineMentions';
 
 export interface HomeHeroSubmitHandler {
   (): void;
@@ -118,7 +123,9 @@ export const HomeHero = forwardRef<HTMLTextAreaElement, Props>(function HomeHero
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [mentionTab, setMentionTab] = useState<HomeMentionTab>('all');
   const [hoveredPlugin, setHoveredPlugin] = useState<InstalledPluginRecord | null>(null);
+  const [promptScrollTop, setPromptScrollTop] = useState(0);
   const composingRef = useRef(false);
+  const inputElementRef = useRef<HTMLTextAreaElement | null>(null);
   const canSubmit = prompt.trim().length > 0 && !submitDisabled;
   const placeholder = activePluginTitle || activeSkillTitle
     ? 'Edit the example query or write your own…'
@@ -209,14 +216,42 @@ export const HomeHero = forwardRef<HTMLTextAreaElement, Props>(function HomeHero
     (mentionTab === 'plugins' && pluginsLoading) ||
     (mentionTab === 'skills' && skillsLoading) ||
     (mentionTab === 'mcp' && mcpLoading);
+  const promptMentionEntities = useMemo(
+    () =>
+      buildHomeMentionEntities({
+        activePluginRecord,
+        activeSkillId,
+        activeSkillTitle,
+        mcpOptions,
+        pluginOptions,
+        selectedPluginContexts,
+        skillOptions,
+      }),
+    [
+      activePluginRecord,
+      activeSkillId,
+      activeSkillTitle,
+      mcpOptions,
+      pluginOptions,
+      selectedPluginContexts,
+      skillOptions,
+    ],
+  );
+  const pluginByMentionId = useMemo(() => {
+    const map = new Map<string, InstalledPluginRecord>();
+    for (const plugin of pluginOptions) map.set(plugin.id, plugin);
+    for (const plugin of selectedPluginContexts) map.set(plugin.id, plugin);
+    if (activePluginRecord) map.set(activePluginRecord.id, activePluginRecord);
+    return map;
+  }, [activePluginRecord, pluginOptions, selectedPluginContexts]);
   const promptOverlayParts = useMemo(
     () => buildPromptOverlayParts(
       pluginInputTemplate,
       pluginInputValues,
       prompt,
-      selectedPluginContexts,
+      promptMentionEntities,
     ),
-    [pluginInputTemplate, pluginInputValues, prompt, selectedPluginContexts],
+    [pluginInputTemplate, pluginInputValues, prompt, promptMentionEntities],
   );
   const fieldByName = useMemo(
     () => new Map(pluginInputFields.map((field) => [field.name, field])),
@@ -239,6 +274,18 @@ export const HomeHero = forwardRef<HTMLTextAreaElement, Props>(function HomeHero
     if (!pickerOpen) setHoveredPlugin(null);
   }, [pickerOpen]);
 
+  useEffect(() => {
+    setPromptScrollTop(inputElementRef.current?.scrollTop ?? 0);
+  }, [prompt, promptOverlayParts]);
+
+  const setInputRef = useCallback(
+    (node: HTMLTextAreaElement | null) => {
+      inputElementRef.current = node;
+      assignForwardedRef(ref, node);
+    },
+    [ref],
+  );
+
   function pickPlugin(record: InstalledPluginRecord) {
     const nextPrompt = mention
       ? replaceMentionTokenWithText(prompt, mention, pluginMentionText(record))
@@ -247,7 +294,9 @@ export const HomeHero = forwardRef<HTMLTextAreaElement, Props>(function HomeHero
   }
 
   function pickSkill(skill: SkillSummary) {
-    const nextPrompt = mention ? replaceMentionToken(prompt, mention) : null;
+    const nextPrompt = mention
+      ? replaceMentionTokenWithText(prompt, mention, inlineMentionToken(skill.name))
+      : prompt;
     onPickSkill(skill, nextPrompt);
   }
 
@@ -256,7 +305,7 @@ export const HomeHero = forwardRef<HTMLTextAreaElement, Props>(function HomeHero
       ? replaceMentionTokenWithText(
           prompt,
           mention,
-          `Use the \`${server.id}\` MCP server tools.`,
+          inlineMentionToken(server.label || server.id),
         )
       : prompt;
     onPickMcp(server, nextPrompt);
@@ -381,51 +430,53 @@ export const HomeHero = forwardRef<HTMLTextAreaElement, Props>(function HomeHero
               <div
                 className="home-hero__prompt-highlight"
                 data-testid="home-hero-prompt-highlight"
+                style={{ ['--home-hero-prompt-scroll' as string]: `${promptScrollTop}px` }}
               >
-                {promptOverlayParts.map((part, index) => (
-                  part.kind === 'slot' ? (
-                    <InlinePromptInput
-                      key={`${part.key}-${index}`}
-                      field={part.key ? fieldByName.get(part.key) ?? null : null}
-                      name={part.key ?? ''}
-                      value={part.key ? pluginInputValues[part.key] : undefined}
-                      fallbackText={part.text}
-                      filled={part.filled === true}
-                      onChange={(value) => {
-                        if (part.key) updatePluginInput(part.key, value);
-                      }}
-                    />
-                  ) : (
-                    part.kind === 'mention' ? (
-                      <button
-                        key={`${part.record.id}-${index}`}
-                        type="button"
-                        className="home-hero__prompt-mention"
-                        data-plugin-id={part.record.id}
-                        data-testid={`home-hero-prompt-plugin-${part.record.id}`}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => onOpenPluginDetails(part.record)}
-                        title={`Plugin: ${part.record.title}`}
-                      >
-                        @{part.record.title}
-                      </button>
+                <div className="home-hero__prompt-highlight-inner">
+                  {promptOverlayParts.map((part, index) => (
+                    part.kind === 'slot' ? (
+                      <InlinePromptInput
+                        key={`${part.key}-${index}`}
+                        field={part.key ? fieldByName.get(part.key) ?? null : null}
+                        name={part.key ?? ''}
+                        value={part.key ? pluginInputValues[part.key] : undefined}
+                        fallbackText={part.text}
+                        filled={part.filled === true}
+                        onChange={(value) => {
+                          if (part.key) updatePluginInput(part.key, value);
+                        }}
+                      />
                     ) : (
-                      <span key={`text-${index}`} aria-hidden>
-                        {part.text}
-                      </span>
+                      part.kind === 'mention' ? (
+                        <InlineMentionToken
+                          key={`${part.entity.kind}-${part.entity.id}-${index}`}
+                          entity={part.entity}
+                          pluginRecord={pluginByMentionId.get(part.entity.id) ?? null}
+                          text={part.text}
+                          onOpenPluginDetails={onOpenPluginDetails}
+                        />
+                      ) : (
+                        <span key={`text-${index}`} aria-hidden>
+                          {part.text}
+                        </span>
+                      )
                     )
-                  )
-                ))}
+                  ))}
+                </div>
               </div>
             ) : null}
             <textarea
-              ref={ref}
+              ref={setInputRef}
               className="home-hero__input"
               data-testid="home-hero-input"
               value={prompt}
+              spellCheck={false}
               onChange={(e) => {
                 onPromptChange(e.target.value);
                 setSelectedIndex(0);
+              }}
+              onScroll={(event) => {
+                setPromptScrollTop(event.currentTarget.scrollTop);
               }}
               onCompositionStart={() => {
                 composingRef.current = true;
@@ -651,6 +702,16 @@ interface ContextMention {
   query: string;
 }
 
+function assignForwardedRef<T>(forwardedRef: ForwardedRef<T>, value: T | null) {
+  if (typeof forwardedRef === 'function') {
+    forwardedRef(value);
+    return;
+  }
+  if (forwardedRef) {
+    forwardedRef.current = value;
+  }
+}
+
 type PromptOverlayPart =
   | {
       kind: 'text';
@@ -664,7 +725,8 @@ type PromptOverlayPart =
     }
   | {
       kind: 'mention';
-      record: InstalledPluginRecord;
+      entity: InlineMentionEntity;
+      text: string;
     };
 
 interface PromptHighlightPart {
@@ -721,59 +783,41 @@ function buildPromptOverlayParts(
   template: string | null,
   values: Record<string, unknown>,
   prompt: string,
-  pluginContexts: InstalledPluginRecord[],
+  mentionEntities: InlineMentionEntity[],
 ): PromptOverlayPart[] | null {
   const templateParts = buildPromptHighlightParts(template, values, prompt);
   const baseParts: PromptOverlayPart[] = templateParts ?? [{ kind: 'text', text: prompt }];
-  const withMentions = injectPluginMentionParts(baseParts, pluginContexts);
+  const withMentions = injectMentionParts(baseParts, mentionEntities);
   if (templateParts || withMentions.some((part) => part.kind === 'mention')) {
     return withMentions;
   }
   return null;
 }
 
-function injectPluginMentionParts(
+function injectMentionParts(
   parts: PromptOverlayPart[],
-  pluginContexts: InstalledPluginRecord[],
+  mentionEntities: InlineMentionEntity[],
 ): PromptOverlayPart[] {
-  if (pluginContexts.length === 0) return parts;
   return parts.flatMap((part) => {
     if (part.kind !== 'text') return [part];
-    return splitTextPartByPluginMentions(part.text, pluginContexts);
+    const mentionParts = buildInlineMentionParts(part.text, mentionEntities);
+    return mentionParts
+      ? mentionParts.map((mentionPart): PromptOverlayPart => {
+          if (mentionPart.kind === 'mention') {
+            return {
+              kind: 'mention',
+              entity: mentionPart.entity,
+              text: mentionPart.text,
+            };
+          }
+          return { kind: 'text', text: mentionPart.text };
+        })
+      : [part];
   });
 }
 
-function splitTextPartByPluginMentions(
-  text: string,
-  pluginContexts: InstalledPluginRecord[],
-): PromptOverlayPart[] {
-  const result: PromptOverlayPart[] = [];
-  let index = 0;
-  while (index < text.length) {
-    let best: { record: InstalledPluginRecord; start: number; token: string } | null = null;
-    for (const record of pluginContexts) {
-      const token = pluginMentionText(record);
-      const start = text.indexOf(token, index);
-      if (start === -1) continue;
-      if (!best || start < best.start || (start === best.start && token.length > best.token.length)) {
-        best = { record, start, token };
-      }
-    }
-    if (!best) {
-      result.push({ kind: 'text', text: text.slice(index) });
-      break;
-    }
-    if (best.start > index) {
-      result.push({ kind: 'text', text: text.slice(index, best.start) });
-    }
-    result.push({ kind: 'mention', record: best.record });
-    index = best.start + best.token.length;
-  }
-  return result.length > 0 ? result : [{ kind: 'text', text }];
-}
-
 function pluginMentionText(record: InstalledPluginRecord): string {
-  return `@${record.title}`;
+  return inlineMentionToken(record.title);
 }
 
 function stringifyTemplateValue(
@@ -796,6 +840,134 @@ function getTemplateInputNames(template: string | null): Set<string> {
     if (key) names.add(key);
   }
   return names;
+}
+
+function buildHomeMentionEntities({
+  activePluginRecord,
+  activeSkillId,
+  activeSkillTitle,
+  mcpOptions,
+  pluginOptions,
+  selectedPluginContexts,
+  skillOptions,
+}: {
+  activePluginRecord: InstalledPluginRecord | null;
+  activeSkillId: string | null;
+  activeSkillTitle: string | null;
+  mcpOptions: McpServerConfig[];
+  pluginOptions: InstalledPluginRecord[];
+  selectedPluginContexts: InstalledPluginRecord[];
+  skillOptions: SkillSummary[];
+}): InlineMentionEntity[] {
+  const entities: InlineMentionEntity[] = [];
+  const pluginSeen = new Set<string>();
+  for (const plugin of [...selectedPluginContexts, ...pluginOptions]) {
+    if (pluginSeen.has(plugin.id)) continue;
+    pluginSeen.add(plugin.id);
+    entities.push({
+      id: plugin.id,
+      kind: 'plugin',
+      label: plugin.title,
+      token: pluginMentionText(plugin),
+      title: `Plugin: ${plugin.title}`,
+    });
+  }
+  if (activePluginRecord && !pluginSeen.has(activePluginRecord.id)) {
+    entities.push({
+      id: activePluginRecord.id,
+      kind: 'plugin',
+      label: activePluginRecord.title,
+      token: pluginMentionText(activePluginRecord),
+      title: `Plugin: ${activePluginRecord.title}`,
+    });
+  }
+  const skillSeen = new Set<string>();
+  for (const skill of skillOptions) {
+    if (skillSeen.has(skill.id)) continue;
+    skillSeen.add(skill.id);
+    entities.push({
+      id: skill.id,
+      kind: 'skill',
+      label: skill.name,
+      token: inlineMentionToken(skill.name),
+      title: `Skill: ${skill.name}`,
+    });
+    if (skill.id !== skill.name) {
+      entities.push({
+        id: skill.id,
+        kind: 'skill',
+        label: skill.id,
+        token: inlineMentionToken(skill.id),
+        title: `Skill: ${skill.name}`,
+      });
+    }
+  }
+  if (activeSkillId && activeSkillTitle && !skillSeen.has(activeSkillId)) {
+    entities.push({
+      id: activeSkillId,
+      kind: 'skill',
+      label: activeSkillTitle,
+      token: inlineMentionToken(activeSkillTitle),
+      title: `Skill: ${activeSkillTitle}`,
+    });
+  }
+  for (const server of mcpOptions) {
+    const label = server.label || server.id;
+    entities.push({
+      id: server.id,
+      kind: 'mcp',
+      label,
+      token: inlineMentionToken(label),
+      title: `MCP: ${label}`,
+    });
+    if (server.id !== label) {
+      entities.push({
+        id: server.id,
+        kind: 'mcp',
+        label: server.id,
+        token: inlineMentionToken(server.id),
+        title: `MCP: ${label}`,
+      });
+    }
+  }
+  return entities;
+}
+
+function InlineMentionToken({
+  entity,
+  pluginRecord,
+  text,
+  onOpenPluginDetails,
+}: {
+  entity: InlineMentionEntity;
+  pluginRecord: InstalledPluginRecord | null;
+  text: string;
+  onOpenPluginDetails: (record: InstalledPluginRecord) => void;
+}) {
+  if (entity.kind === 'plugin' && pluginRecord) {
+    return (
+      <button
+        type="button"
+        className="home-hero__prompt-mention"
+        data-plugin-id={pluginRecord.id}
+        data-testid={`home-hero-prompt-plugin-${pluginRecord.id}`}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => onOpenPluginDetails(pluginRecord)}
+        title={entity.title ?? `Plugin: ${pluginRecord.title}`}
+      >
+        {text}
+      </button>
+    );
+  }
+  return (
+    <span
+      className="home-hero__prompt-mention home-hero__prompt-mention--static"
+      data-mention-kind={entity.kind}
+      title={entity.title ?? text}
+    >
+      {text}
+    </span>
+  );
 }
 
 interface InlinePromptInputProps {
@@ -950,13 +1122,6 @@ function getContextMention(value: string): ContextMention | null {
     end: value.length,
     query,
   };
-}
-
-function replaceMentionToken(value: string, mention: ContextMention): string | null {
-  const before = value.slice(0, mention.start).trimEnd();
-  const after = value.slice(mention.end).trimStart();
-  const next = [before, after].filter(Boolean).join(' ').trim();
-  return next.length > 0 ? next : null;
 }
 
 function replaceMentionTokenWithText(

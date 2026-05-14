@@ -285,16 +285,10 @@ describe('HomeView prompt handoff', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('applies a plugin-use handoff from the Plugins page', async () => {
+  it('adds a plugin-use handoff from the Plugins page as context', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
       if (typeof url === 'string' && url === '/api/plugins') {
         return new Response(JSON.stringify({ plugins: [WEB_PROTOTYPE_PLUGIN] }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (typeof url === 'string' && url.includes('/apply')) {
-        return new Response(JSON.stringify(WEB_PROTOTYPE_APPLY_RESULT), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
@@ -317,14 +311,12 @@ describe('HomeView prompt handoff', () => {
       />,
     );
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
-      '/api/plugins/example-web-prototype/apply',
-      expect.anything(),
-    ));
+    await waitFor(() => {
+      expect(screen.getByTestId('home-hero-context-plugin-example-web-prototype')).toBeTruthy();
+    });
     expect((await screen.findByTestId('home-hero-input') as HTMLTextAreaElement).value)
-      .toBe(
-        'Build a high-fidelity web prototype for product evaluators using the active project design system from the bundled web prototype seed.',
-      );
+      .toBe('');
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/apply'))).toBe(false);
   });
 
   it('routes free-form submits through the hidden default plugin without applying a visible chip', async () => {
@@ -534,16 +526,10 @@ describe('HomeView prompt handoff', () => {
     ));
   });
 
-  it('confirms before a plugin-use handoff replaces an existing prompt', async () => {
+  it('appends a plugin-use query handoff without replacing an existing prompt', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
       if (typeof url === 'string' && url === '/api/plugins') {
         return new Response(JSON.stringify({ plugins: [WEB_PROTOTYPE_PLUGIN] }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (typeof url === 'string' && url.includes('/apply')) {
-        return new Response(JSON.stringify(DEFAULT_APPLY_RESULT), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
@@ -574,19 +560,25 @@ describe('HomeView prompt handoff', () => {
         onSubmit={() => undefined}
         onOpenProject={() => undefined}
         onViewAllProjects={() => undefined}
-        promptHandoff={createPluginUseHandoff(2, 'example-web-prototype')}
+        promptHandoff={createPluginUseHandoff(2, 'example-web-prototype', {
+          action: 'use-with-query',
+        })}
       />,
     );
 
-    expect(await screen.findByRole('dialog', { name: /replace current prompt/i })).toBeTruthy();
+    const expectedPrompt = [
+      'Keep my current brief',
+      '',
+      'Build a high-fidelity web prototype for product evaluators using the active project design system from the bundled web prototype seed.',
+    ].join('\n');
+    await waitFor(() => {
+      expect((input as HTMLTextAreaElement).value).toBe(expectedPrompt);
+      expect((input as HTMLTextAreaElement).selectionStart).toBe(expectedPrompt.length);
+      expect((input as HTMLTextAreaElement).selectionEnd).toBe(expectedPrompt.length);
+    });
+    expect(screen.queryByRole('dialog', { name: /replace current prompt/i })).toBeNull();
+    expect(screen.getByTestId('home-hero-context-plugin-example-web-prototype')).toBeTruthy();
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/apply'))).toBe(false);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Replace' }));
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
-      '/api/plugins/example-web-prototype/apply',
-      expect.anything(),
-    ));
   });
 
   it('binds od-plugin-authoring before submitting the rail create-plugin prompt', async () => {

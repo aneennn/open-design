@@ -200,7 +200,7 @@ describe('HomeHero plugin picker', () => {
     );
 
     fireEvent.mouseDown(screen.getByRole('option', { name: /prototype lab/i }));
-    expect(onPickSkill).toHaveBeenCalledWith(skill, 'Make');
+    expect(onPickSkill).toHaveBeenCalledWith(skill, 'Make @Prototype Lab');
 
     rerender(
       <HomeHero
@@ -228,10 +228,7 @@ describe('HomeHero plugin picker', () => {
     );
 
     fireEvent.mouseDown(screen.getByRole('option', { name: /linear/i }));
-    expect(onPickMcp).toHaveBeenCalledWith(
-      mcp,
-      'Use the `linear` MCP server tools.',
-    );
+    expect(onPickMcp).toHaveBeenCalledWith(mcp, '@Linear');
   });
 
   it('does not submit while an IME composition is confirming text with Enter', () => {

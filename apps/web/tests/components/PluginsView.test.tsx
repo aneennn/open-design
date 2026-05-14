@@ -200,7 +200,7 @@ describe('PluginsView', () => {
 
     fireEvent.click(availableTab);
     expect(await screen.findByText('Remote Plugin')).toBeTruthy();
-    expect(screen.getByText('Example Catalog')).toBeTruthy();
+    expect(screen.getAllByText('Example Catalog').length).toBeGreaterThan(0);
   });
 
   it('shows all installed plugins by default on the Plugins page', async () => {
@@ -235,7 +235,29 @@ describe('PluginsView', () => {
     expect(onUsePlugin).toHaveBeenCalledWith(expect.objectContaining({
       id: 'user-plugin',
       title: 'User Plugin',
-    }));
+    }), 'use');
+    expect(mockedApplyPlugin).not.toHaveBeenCalled();
+  });
+
+  it('hands Use with query actions to the host shell', async () => {
+    const onUsePlugin = vi.fn();
+    const user = makePlugin('query-plugin', 'github', 'restricted', 'Query Plugin');
+    user.manifest.od = {
+      ...user.manifest.od,
+      useCase: { query: 'Make a query-backed artifact.' },
+    };
+    mockedListPlugins.mockResolvedValue([user]);
+    mockedListMarketplaces.mockResolvedValue([]);
+
+    render(<PluginsView onUsePlugin={onUsePlugin} />);
+
+    fireEvent.click(await screen.findByTestId('plugins-home-use-menu-query-plugin'));
+    fireEvent.click(screen.getByTestId('plugins-home-use-with-query-query-plugin'));
+
+    expect(onUsePlugin).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'query-plugin',
+      title: 'Query Plugin',
+    }), 'use-with-query');
     expect(mockedApplyPlugin).not.toHaveBeenCalled();
   });
 
@@ -275,7 +297,70 @@ describe('PluginsView', () => {
     expect(screen.getByTestId('plugins-tab-installed').getAttribute('aria-selected')).toBe('true');
   });
 
-  it('marks bundled official registry entries as already installed in Available', async () => {
+  it('filters available marketplace entries by source and search', async () => {
+    mockedListMarketplaces.mockResolvedValue([
+      {
+        id: 'catalog-1',
+        url: 'https://example.com/open-design-marketplace.json',
+        trust: 'official',
+        manifest: {
+          name: 'Example Catalog',
+          version: '1.0.0',
+          plugins: [{
+            name: 'remote-plugin',
+            title: 'Remote Plugin',
+            source: 'github:owner/repo',
+            version: '1.2.0',
+            description: 'Remote catalog plugin.',
+            tags: ['deck'],
+          }],
+        },
+      },
+      {
+        id: 'catalog-2',
+        url: 'https://team.example.com/open-design-marketplace.json',
+        trust: 'restricted',
+        manifest: {
+          name: 'Team Catalog',
+          version: '1.0.0',
+          plugins: [{
+            name: 'figma-importer',
+            title: 'Figma Importer',
+            source: 'github:team/figma-importer',
+            version: '0.2.0',
+            description: 'Imports a Figma source.',
+            tags: ['figma', 'import'],
+          }],
+        },
+      },
+    ]);
+
+    render(<PluginsView />);
+
+    fireEvent.click(await screen.findByTestId('plugins-tab-available'));
+    expect(await screen.findByText('Remote Plugin')).toBeTruthy();
+    expect(screen.getByText('Figma Importer')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('Search available plugins'), {
+      target: { value: 'figma' },
+    });
+
+    expect(await screen.findByText('Figma Importer')).toBeTruthy();
+    expect(screen.queryByText('Remote Plugin')).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('Source'), {
+      target: { value: 'catalog-1' },
+    });
+
+    expect(await screen.findByText('No available entries match your filters.')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear available plugin search' }));
+
+    expect(await screen.findByText('Remote Plugin')).toBeTruthy();
+    expect(screen.queryByText('Figma Importer')).toBeNull();
+  });
+
+  it('keeps installed registry entries out of Available', async () => {
     const official = makePlugin('official-plugin', 'bundled', 'bundled', 'Official Plugin');
     official.sourceMarketplaceId = 'official';
     official.sourceMarketplaceEntryName = 'open-design/official-plugin';
@@ -305,14 +390,9 @@ describe('PluginsView', () => {
     render(<PluginsView />);
 
     fireEvent.click(await screen.findByTestId('plugins-tab-available'));
-    const card = (await screen.findByText('Official Plugin')).closest('article');
-    expect(card).not.toBeNull();
-    expect(within(card!).getByText('Open Design Official')).toBeTruthy();
-    expect(within(card!).queryByRole('button', { name: 'Install' })).toBeNull();
-    expect(within(card!).queryByRole('button', { name: 'Use' })).toBeNull();
-    expect(
-      within(card!).getByRole('button', { name: 'Installed' }).hasAttribute('disabled'),
-    ).toBe(true);
+    expect(await screen.findByText(/Installed catalog entries live in Installed/i)).toBeTruthy();
+    expect(screen.queryByText('Official Plugin')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Installed' })).toBeNull();
     expect(mockedApplyPlugin).not.toHaveBeenCalled();
   });
 

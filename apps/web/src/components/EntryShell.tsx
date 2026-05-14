@@ -43,6 +43,7 @@ import {
   createPluginUseHandoff,
   type HomePromptHandoff,
 } from './home-hero/plugin-authoring';
+import type { PluginUseAction } from './plugins-home/useActions';
 import { Icon } from './Icon';
 import { IntegrationsView, type IntegrationTab } from './IntegrationsView';
 import { InlineModelSwitcher } from './InlineModelSwitcher';
@@ -277,8 +278,13 @@ export function EntryShell({
     changeView('home');
   }
 
-  function usePluginFromLibrary(record: InstalledPluginRecord) {
-    setHomePromptHandoff(createPluginUseHandoff(Date.now(), record.id));
+  function usePluginFromLibrary(
+    record: InstalledPluginRecord,
+    action: PluginUseAction = 'use',
+  ) {
+    setHomePromptHandoff(
+      createPluginUseHandoff(Date.now(), record.id, { action }),
+    );
     changeView('home');
   }
 

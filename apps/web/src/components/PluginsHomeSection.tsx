@@ -24,6 +24,7 @@ import {
   type FilterMode,
 } from './plugins-home/usePluginFacets';
 import type { FacetOption } from './plugins-home/facets';
+import type { PluginUseAction } from './plugins-home/useActions';
 
 interface Props {
   plugins: InstalledPluginRecord[];
@@ -31,7 +32,7 @@ interface Props {
   activePluginId: string | null;
   pendingApplyId: string | null;
   pendingShareAction?: { pluginId: string; action: PluginShareAction } | null;
-  onUse: (record: InstalledPluginRecord) => void;
+  onUse: (record: InstalledPluginRecord, action: PluginUseAction) => void;
   onOpenDetails: (record: InstalledPluginRecord) => void;
   onPluginShareAction?: (
     record: InstalledPluginRecord,

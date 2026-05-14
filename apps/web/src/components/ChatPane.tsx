@@ -507,6 +507,7 @@ export function ChatPane({
                         message={m}
                         streaming={messageStreaming}
                         projectId={projectId}
+                        projectFiles={projectFiles}
                         projectFileNames={projectFileNames}
                         onRequestOpenFile={onRequestOpenFile}
                         isLast={m.id === lastAssistantId}

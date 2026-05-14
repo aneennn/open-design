@@ -25,6 +25,7 @@ import {
 import { fetchMcpServers } from '../state/mcp';
 import { useI18n } from '../i18n';
 import type { Project, SkillSummary } from '../types';
+import { inlineMentionToken } from '../utils/inlineMentions';
 import { HomeHero } from './HomeHero';
 import { findChip, type HomeHeroChip } from './home-hero/chips';
 import {
@@ -37,6 +38,7 @@ import {
 import { PluginDetailsModal } from './PluginDetailsModal';
 import { PluginsHomeSection } from './PluginsHomeSection';
 import type { PluginLoopSubmit } from './PluginLoopHome';
+import type { PluginUseAction } from './plugins-home/useActions';
 import { RecentProjectsStrip } from './RecentProjectsStrip';
 
 interface ActivePlugin {
@@ -72,6 +74,7 @@ interface PendingReplacement {
 
 interface PendingPluginUseHandoff {
   pluginId: string;
+  action: PluginUseAction;
   inputs?: Record<string, unknown>;
 }
 
@@ -135,6 +138,7 @@ export function HomeView({
   const [pendingReplacement, setPendingReplacement] = useState<PendingReplacement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const consumedHandoffIdRef = useRef<number | null>(null);
+  const pendingPromptFocusEndRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -166,12 +170,24 @@ export function HomeView({
   }, []);
 
   useEffect(() => {
+    if (!pendingPromptFocusEndRef.current) return;
+    pendingPromptFocusEndRef.current = false;
+    const input = inputRef.current;
+    if (!input) return;
+    input.focus();
+    const position = input.value.length;
+    input.setSelectionRange(position, position);
+    input.scrollTop = input.scrollHeight;
+  }, [prompt]);
+
+  useEffect(() => {
     if (!promptHandoff || consumedHandoffIdRef.current === promptHandoff.id) return;
     consumedHandoffIdRef.current = promptHandoff.id;
     setError(null);
     if (promptHandoff.source === 'plugin-use') {
       setPendingPluginUseHandoff({
         pluginId: promptHandoff.pluginId,
+        action: promptHandoff.action ?? 'use',
         ...(promptHandoff.inputs ? { inputs: promptHandoff.inputs } : {}),
       });
       if (promptHandoff.focus) {
@@ -341,7 +357,7 @@ export function HomeView({
     return result;
   }
 
-  function requestUsePlugin(
+  function requestActivePlugin(
     record: InstalledPluginRecord,
     nextPrompt?: string | null,
     options?: {
@@ -355,6 +371,29 @@ export function HomeView({
     runWithReplacementConfirmation(record.title, replacement, () => {
       void usePlugin(record, nextPrompt, options);
     });
+  }
+
+  function requestPluginContextUse(
+    record: InstalledPluginRecord,
+    action: PluginUseAction = 'use',
+    inputs?: Record<string, unknown>,
+  ) {
+    let shouldFocusOnly = true;
+    setSelectedPluginContexts((prev) => {
+      if (prev.some((item) => item.record.id === record.id)) return prev;
+      return [...prev, { record }];
+    });
+    if (action === 'use-with-query') {
+      const queryPrompt = renderPluginContextPrompt(record, inputs);
+      if (queryPrompt) {
+        shouldFocusOnly = false;
+        pendingPromptFocusEndRef.current = true;
+        setPrompt((current) => appendPromptQuery(current, queryPrompt));
+      }
+    }
+    setError(null);
+    setDetailsRecord(null);
+    if (shouldFocusOnly) requestAnimationFrame(() => inputRef.current?.focus());
   }
 
   function runWithReplacementConfirmation(
@@ -384,6 +423,18 @@ export function HomeView({
     return renderPluginBriefTemplate(query, hydratePluginInputs(record.manifest?.od?.inputs ?? [], inputs));
   }
 
+  function renderPluginContextPrompt(
+    record: InstalledPluginRecord,
+    inputs?: Record<string, unknown>,
+  ): string | null {
+    const query = resolvePluginQueryFallback(record.manifest?.od?.useCase?.query, locale);
+    if (!query) return null;
+    return renderPluginBriefTemplate(
+      query,
+      hydratePluginInputs(record.manifest?.od?.inputs ?? [], inputs),
+    );
+  }
+
   useEffect(() => {
     if (!pendingPluginUseHandoff || pluginsLoading) return;
     const record = plugins.find((plugin) => plugin.id === pendingPluginUseHandoff.pluginId);
@@ -394,12 +445,10 @@ export function HomeView({
       );
       return;
     }
-    requestUsePlugin(
+    requestPluginContextUse(
       record,
-      undefined,
-      pendingPluginUseHandoff.inputs
-        ? { inputs: pendingPluginUseHandoff.inputs }
-        : undefined,
+      pendingPluginUseHandoff.action,
+      pendingPluginUseHandoff.inputs,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingPluginUseHandoff, pluginsLoading, plugins]);
@@ -545,7 +594,7 @@ export function HomeView({
           );
           return;
         }
-        requestUsePlugin(record, undefined, {
+        requestActivePlugin(record, undefined, {
           projectKind: chip.action.projectKind,
           chipId: chip.id,
           inputs: chip.action.inputs,
@@ -672,7 +721,7 @@ export function HomeView({
         loading={pluginsLoading}
         activePluginId={active?.record.id ?? null}
         pendingApplyId={pendingApplyId}
-        onUse={(record) => requestUsePlugin(record)}
+        onUse={(record, action) => requestPluginContextUse(record, action)}
         onOpenDetails={setDetailsRecord}
         onCreatePlugin={(goal) => queuePluginAuthoring(null, goal)}
         onBrowseRegistry={onBrowseRegistry}
@@ -682,7 +731,7 @@ export function HomeView({
         <PluginDetailsModal
           record={detailsRecord}
           onClose={() => setDetailsRecord(null)}
-          onUse={(record) => requestUsePlugin(record)}
+          onUse={(record) => requestPluginContextUse(record, 'use')}
           isApplying={pendingApplyId === detailsRecord.id}
         />
       ) : null}
@@ -820,12 +869,19 @@ function escapeRegExp(value: string): string {
 }
 
 function removePluginMentionFromPrompt(prompt: string, record: InstalledPluginRecord): string {
-  const token = `@${record.title}`;
+  const token = inlineMentionToken(record.title);
   return prompt
     .replace(new RegExp(`(^|\\s)${escapeRegExp(token)}(?=\\s|$)`, 'g'), ' ')
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/\n[ \t]+/g, '\n')
     .trim();
+}
+
+function appendPromptQuery(current: string, query: string): string {
+  const next = query.trim();
+  if (!next) return current;
+  if (!current.trim()) return next;
+  return `${current.trimEnd()}\n\n${next}`;
 }
 
 function inputsEqual(
