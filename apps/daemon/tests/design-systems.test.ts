@@ -83,10 +83,10 @@ describe('design systems registry', () => {
         'context/provenance.json',
         'context/provenance.md',
         'colors_and_type.css',
-        'preview/colors-node-types.html',
-        'preview/typography-scale.html',
+        'preview/colors-primary.html',
+        'preview/typography-specimens.html',
         'assets/logo.svg',
-        'ui_kits/generated_interface/index.html',
+        'ui_kits/app/index.html',
       ]),
     );
     await expect(readUserDesignSystemFile(root, created.id, 'README.md'))
@@ -161,12 +161,12 @@ describe('design systems registry', () => {
         'SKILL.md',
         'context/provenance.json',
         'colors_and_type.css',
-        'preview/colors-node-types.html',
+        'preview/colors-primary.html',
       ]),
     );
   });
 
-  it('backfills agent-managed review artifacts when the workspace is inspected', async () => {
+  it('does not backfill agent-managed review artifacts before the agent writes them', async () => {
     const created = await createUserDesignSystem(root, {
       title: 'Agent Managed',
       summary: 'The agent will create review artifacts in the workspace.',
@@ -176,25 +176,16 @@ describe('design systems registry', () => {
 
     const initialFiles = await listUserDesignSystemFiles(root, created.id);
 
-    expect(initialFiles?.map((file) => file.path)).toEqual(
-      expect.arrayContaining([
-        'DESIGN.md',
-        'README.md',
-        'SKILL.md',
-        'preview/colors-node-types.html',
-        'preview/spacing-system.html',
-        'preview/typography-scale.html',
-      ]),
-    );
+    expect(initialFiles?.map((file) => file.path)).toEqual(['DESIGN.md']);
+    expect(initialFiles?.map((file) => file.path)).not.toEqual(expect.arrayContaining(['README.md', 'preview/colors-primary.html']));
     await expect(readUserDesignSystemFile(root, created.id, 'README.md'))
       .resolves
-      .toMatchObject({
-        path: 'README.md',
-        kind: 'document',
-      });
+      .toBeNull();
 
+    const contextDir = path.join(root, created.id.slice('user:'.length), 'context');
+    await mkdir(contextDir, { recursive: true });
     await writeFile(
-      path.join(root, created.id.slice('user:'.length), 'context', 'source-context.md'),
+      path.join(contextDir, 'source-context.md'),
       '# Source Context\n\nConnector evidence remains available as project context.\n',
       'utf8',
     );
@@ -204,9 +195,9 @@ describe('design systems registry', () => {
     expect(generatedFiles?.map((file) => file.path)).toEqual(
       expect.arrayContaining([
         'DESIGN.md',
-        'README.md',
         'context/source-context.md',
       ]),
     );
+    expect(generatedFiles?.map((file) => file.path)).not.toEqual(expect.arrayContaining(['README.md']));
   });
 });

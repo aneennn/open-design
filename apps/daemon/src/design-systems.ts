@@ -538,6 +538,8 @@ export async function readUserDesignSystemFile(
 }
 
 async function ensureGeneratedDesignSystemFiles(root: string, id: string): Promise<void> {
+  const metadata = await readUserMetadata(root, id);
+  if (metadata.artifactMode === 'agent-managed') return;
   try {
     const existing = await stat(path.join(root, id, 'README.md'));
     if (existing.isFile()) return;
@@ -546,7 +548,6 @@ async function ensureGeneratedDesignSystemFiles(root: string, id: string): Promi
   }
   try {
     const body = await readFile(path.join(root, id, 'DESIGN.md'), 'utf8');
-    const metadata = await readUserMetadata(root, id);
     const title = normalizeTitle(metadata.title ?? firstHeading(body) ?? id);
     const category = metadata.category ?? extractCategory(body) ?? 'Custom';
     const surface = metadata.surface ?? extractSurface(body);
@@ -643,7 +644,7 @@ async function writeGeneratedDesignSystemFiles(
     mkdir(path.join(dir, 'preview'), { recursive: true }),
     mkdir(path.join(dir, 'src', 'assets'), { recursive: true }),
     mkdir(path.join(dir, 'src', 'components'), { recursive: true }),
-    mkdir(path.join(dir, 'ui_kits', 'generated_interface'), { recursive: true }),
+    mkdir(path.join(dir, 'ui_kits', 'app'), { recursive: true }),
   ]);
 
   const palette = normalizeSwatches(input.body);
@@ -707,33 +708,69 @@ async function writeGeneratedDesignSystemFiles(
     ),
     writeFile(path.join(dir, 'index.html'), renderOverviewHtml(input.title, summary, palette, sections), 'utf8'),
     writeFile(
-      path.join(dir, 'preview', 'colors-node-types.html'),
-      renderColorPreviewHtml('Node Type Colors', palette),
+      path.join(dir, 'preview', 'colors-primary.html'),
+      renderColorPreviewHtml('Primary Colors', palette),
       'utf8',
     ),
     writeFile(
-      path.join(dir, 'preview', 'colors-ui-palette.html'),
-      renderColorPreviewHtml('UI Color Palette', palette),
+      path.join(dir, 'preview', 'colors-theme-light.html'),
+      renderColorPreviewHtml('Light Theme Palette', palette),
       'utf8',
     ),
     writeFile(
-      path.join(dir, 'preview', 'typography-scale.html'),
+      path.join(dir, 'preview', 'colors-theme-dark.html'),
+      renderColorPreviewHtml('Dark Theme Palette', {
+        ...palette,
+        background: palette.foreground,
+        foreground: '#ffffff',
+        muted: '#d6d6d6',
+        border: '#3f3f46',
+      }),
+      'utf8',
+    ),
+    writeFile(
+      path.join(dir, 'preview', 'typography-specimens.html'),
       renderTypographyPreviewHtml(input.title),
       'utf8',
     ),
     writeFile(
-      path.join(dir, 'preview', 'spacing-system.html'),
-      renderSpacingPreviewHtml(),
+      path.join(dir, 'preview', 'spacing-tokens.html'),
+      renderSpacingPreviewHtml('Spacing Tokens'),
       'utf8',
     ),
     writeFile(
-      path.join(dir, 'preview', 'logo-variants.html'),
+      path.join(dir, 'preview', 'spacing-radius.html'),
+      renderSpacingPreviewHtml('Border Radius'),
+      'utf8',
+    ),
+    writeFile(
+      path.join(dir, 'preview', 'spacing-shadows.html'),
+      renderSpacingPreviewHtml('Shadow Elevation'),
+      'utf8',
+    ),
+    writeFile(
+      path.join(dir, 'preview', 'components-buttons.html'),
+      renderComponentCatalogHtml('Buttons', input.title, summary, palette),
+      'utf8',
+    ),
+    writeFile(
+      path.join(dir, 'preview', 'components-inputs.html'),
+      renderComponentCatalogHtml('Inputs', input.title, summary, palette),
+      'utf8',
+    ),
+    writeFile(
+      path.join(dir, 'preview', 'brand-assets.html'),
       renderLogoPreviewHtml(input.title, palette),
       'utf8',
     ),
     writeFile(
-      path.join(dir, 'ui_kits', 'generated_interface', 'index.html'),
+      path.join(dir, 'ui_kits', 'app', 'index.html'),
       renderComponentPreviewHtml(input.title, summary, palette),
+      'utf8',
+    ),
+    writeFile(
+      path.join(dir, 'ui_kits', 'app', 'README.md'),
+      `# ${input.title} UI Kit\n\nUse \`index.html\` as the applied interface example. Replace this scaffold with source-backed modular components when repository evidence is available.\n`,
       'utf8',
     ),
   ]);
@@ -1128,10 +1165,10 @@ ${sectionLines || '- Visual foundations\n- Component guidance\n- Brand usage'}
 
 - DESIGN.md: canonical design system source.
 - colors_and_type.css: reusable CSS variables for color and type.
-- preview/: HTML review cards for type, color, spacing, components, and brand.
+- preview/: focused HTML review cards for color themes, typography, spacing, components, and brand assets.
 - assets/: logo and brand asset references.
 - context/: structured source context captured during setup.
-- ui_kits/generated_interface/: interactive interface preview.
+- ui_kits/app/: applied interface preview and UI-kit notes.
 - SKILL.md: agent-facing usage instructions.
 ${notes ? `\n## Source Context\n\n${notes}\n` : ''}
 `;
@@ -1178,7 +1215,8 @@ Use this skill when generating Open Design artifacts that should follow ${input.
 - Start from DESIGN.md as the source of truth.
 - Use colors_and_type.css for color, type, spacing, border, and state tokens.
 - Use context/provenance.md to understand which source materials shaped the system.
-- Prefer the preview HTML files as visual references before inventing new styles.
+- Prefer focused preview cards such as colors-primary, typography-specimens, component previews, and brand-assets before inventing new styles.
+- Prefer ui_kits/app/ for applied interface structure.
 - Keep output aligned with this summary: ${input.summary}
 
 ## Core Tokens
@@ -1322,13 +1360,13 @@ function renderTypographyPreviewHtml(title: string): string {
   );
 }
 
-function renderSpacingPreviewHtml(): string {
+function renderSpacingPreviewHtml(title = 'Spacing and Radius'): string {
   const spaces = [4, 8, 12, 16, 24, 32, 40, 48];
   return renderHtmlDocument(
-    'Spacing and Radius',
+    title,
     `<main>
-      <p class="eyebrow">Spacing and Radius</p>
-      <h1>Spacing Scale</h1>
+      <p class="eyebrow">${escapeHtml(title)}</p>
+      <h1>${escapeHtml(title)}</h1>
       <div class="spacing-list">
         ${spaces.map((space) => `<div><code>space-${space / 4}</code><span>${space}px</span><b style="width:${space * 2}px"></b></div>`).join('')}
       </div>
@@ -1336,6 +1374,29 @@ function renderSpacingPreviewHtml(): string {
       <div class="radius-list"><span style="border-radius:6px">6px</span><span style="border-radius:10px">10px</span><span style="border-radius:16px">16px</span></div>
     </main>`,
     normalizeSwatches(''),
+  );
+}
+
+function renderComponentCatalogHtml(
+  title: string,
+  systemTitle: string,
+  summary: string,
+  palette: GeneratedPalette,
+): string {
+  const isInputs = title.toLowerCase().includes('input');
+  return renderHtmlDocument(
+    title,
+    `<main>
+      <p class="eyebrow">${escapeHtml(title)}</p>
+      <h1>${escapeHtml(systemTitle)}</h1>
+      <p class="lead">${escapeHtml(summary)}</p>
+      <section class="component-grid">
+        ${isInputs
+          ? `<label><span>Label</span><input value="Source-backed field" /></label><label><span>Search</span><input placeholder="Search components" /></label><textarea>Helpful multiline content.</textarea>`
+          : `<button class="primary">Primary action</button><button>Secondary action</button><button class="ghost">Icon action</button>`}
+      </section>
+    </main>`,
+    palette,
   );
 }
 
@@ -1426,7 +1487,11 @@ function renderHtmlDocument(title: string, body: string, palette: GeneratedPalet
     button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
     .component-preview section { padding: 48px; }
     .component-row { display: flex; gap: 10px; margin: 24px 0; }
-    @media (max-width: 760px) { .palette, .swatch-grid, .section-list, .component-preview { grid-template-columns: 1fr; } main { width: min(100vw - 28px, 960px); margin: 24px auto; } }
+    .component-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 28px 0; }
+    .component-grid label { display: grid; gap: 8px; color: var(--muted); font-size: 13px; }
+    input, textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--border); background: var(--surface); color: var(--fg); border-radius: 7px; padding: 10px 12px; font: inherit; }
+    textarea { min-height: 92px; resize: vertical; }
+    @media (max-width: 760px) { .palette, .swatch-grid, .section-list, .component-preview, .component-grid { grid-template-columns: 1fr; } main { width: min(100vw - 28px, 960px); margin: 24px auto; } }
   </style>
 </head>
 <body>${body}</body>

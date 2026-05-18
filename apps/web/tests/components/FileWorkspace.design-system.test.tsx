@@ -101,11 +101,11 @@ describe('FileWorkspace design-system project surface', () => {
         files={[
           workspaceFile('DESIGN.md'),
           workspaceFile('colors_and_type.css'),
-          workspaceFile('preview/typography-scale.html'),
-          workspaceFile('preview/colors-node-types.html'),
-          workspaceFile('preview/spacing-system.html'),
-          workspaceFile('ui_kits/generated_interface/index.html'),
-          workspaceFile('preview/logo-variants.html'),
+          workspaceFile('preview/typography-specimens.html'),
+          workspaceFile('preview/colors-primary.html'),
+          workspaceFile('preview/spacing-tokens.html'),
+          workspaceFile('ui_kits/app/index.html'),
+          workspaceFile('preview/brand-assets.html'),
         ]}
         liveArtifacts={[]}
         onRefreshFiles={vi.fn()}
@@ -125,11 +125,11 @@ describe('FileWorkspace design-system project surface', () => {
     expect(markup).toContain('Spacing');
     expect(markup).toContain('Components');
     expect(markup).toContain('Brand');
-    expect(markup).toContain('typography-scale');
-    expect(markup).toContain('colors-node-types');
-    expect(markup).toContain('spacing-system');
-    expect(markup).toContain('generated-interface');
-    expect(markup).toContain('logo-variants');
+    expect(markup).toContain('typography-specimens');
+    expect(markup).toContain('colors-primary');
+    expect(markup).toContain('spacing-tokens');
+    expect(markup).toContain('app');
+    expect(markup).toContain('brand-assets');
     expect(markup).toContain('<iframe');
     expect(markup).not.toContain('Preview cards will appear here as the agent creates them.');
   });
@@ -169,9 +169,9 @@ describe('FileWorkspace design-system project surface', () => {
         projectKind="prototype"
         files={[
           workspaceFile('DESIGN.md'),
-          workspaceFile('preview/typography-scale.html'),
-          workspaceFile('preview/colors-node-types.html'),
-          workspaceFile('ui_kits/generated_interface/index.html'),
+          workspaceFile('preview/typography-specimens.html'),
+          workspaceFile('preview/colors-primary.html'),
+          workspaceFile('ui_kits/app/index.html'),
         ]}
         liveArtifacts={[]}
         onRefreshFiles={vi.fn()}
@@ -181,14 +181,14 @@ describe('FileWorkspace design-system project surface', () => {
         onTabsStateChange={vi.fn()}
         designSystemProject={designSystem()}
         designSystemActivityEvents={[
-          toolUse('Write', { file_path: '/project/preview/typography-scale.html' }, 'write-preview'),
+          toolUse('Write', { file_path: '/project/preview/typography-specimens.html' }, 'write-preview'),
         ]}
       />,
     );
 
     expect(markup).toContain('Creating your design system...');
     expect(markup).not.toContain('Review draft design system');
-    expect(markup).not.toContain('typography-scale');
+    expect(markup).not.toContain('typography-specimens');
     expect(markup).not.toContain('<iframe');
   });
 
@@ -203,7 +203,7 @@ describe('FileWorkspace design-system project surface', () => {
           workspaceFile('context/github/acme-product.md'),
           workspaceFile('context/github/acme-product/files/src/components/Button.tsx'),
           workspaceFile('assets/logo.svg'),
-          workspaceFile('preview/logo-variants.html'),
+          workspaceFile('preview/brand-assets.html'),
         ]}
         liveArtifacts={[]}
         onRefreshFiles={vi.fn()}
@@ -220,7 +220,7 @@ describe('FileWorkspace design-system project surface', () => {
     );
 
     expect(container.textContent).toContain('Brand');
-    expect(container.textContent).toContain('logo-variants');
+    expect(container.textContent).toContain('brand-assets');
     expect(container.textContent).not.toContain('context/github/acme-product.md');
     expect(container.textContent).not.toContain('GitHub metadata: React UI library with token CSS.');
   });
