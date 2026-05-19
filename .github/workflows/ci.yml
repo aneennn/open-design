@@ -594,7 +594,7 @@ jobs:
         run: |
           set -euo pipefail
           run_json="$RUNNER_TEMP/run.json"
-          gh run view "$RUN_ID" --json conclusion,createdAt,databaseId,displayTitle,event,headBranch,jobs,updatedAt,url > "$run_json"
+          gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json conclusion,createdAt,databaseId,displayTitle,event,headBranch,jobs,updatedAt,url > "$run_json"
           jq -r '
             def parse_ts: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
             def seconds($start; $end):
