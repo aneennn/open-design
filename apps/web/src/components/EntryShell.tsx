@@ -228,6 +228,9 @@ interface Props {
   onRenameProject: (id: string, name: string) => void;
   onChangeDefaultDesignSystem: (id: string) => void;
   onConfigChange: (config: AppConfig) => Promise<void> | void;
+  onCreateDesignSystem?: () => void;
+  onOpenDesignSystem?: (id: string) => void;
+  onDesignSystemsRefresh?: () => Promise<void> | void;
   onPersistComposioKey: (composio: AppConfig['composio']) => Promise<void> | void;
   onSkillsChange?: (skills: SkillSummary[]) => void;
   onOpenSettings: (
@@ -281,6 +284,9 @@ export function EntryShell({
   onRenameProject,
   onChangeDefaultDesignSystem,
   onConfigChange,
+  onCreateDesignSystem,
+  onOpenDesignSystem,
+  onDesignSystemsRefresh,
   onPersistComposioKey,
   onSkillsChange,
   onOpenSettings,
@@ -817,6 +823,9 @@ export function EntryShell({
                     systems={designSystems}
                     selectedId={defaultDesignSystemId}
                     onSelect={onChangeDefaultDesignSystem}
+                    onCreate={onCreateDesignSystem}
+                    onOpenSystem={onOpenDesignSystem}
+                    onSystemsRefresh={onDesignSystemsRefresh}
                     onPreview={(id) => setPreviewSystemId(id)}
                   />
                 </div>

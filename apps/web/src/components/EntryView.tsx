@@ -107,6 +107,9 @@ interface Props {
   onRenameProject: (id: string, name: string) => void;
   onChangeDefaultDesignSystem: (id: string) => void;
   onConfigChange: (config: AppConfig) => Promise<void> | void;
+  onCreateDesignSystem?: () => void;
+  onOpenDesignSystem?: (id: string) => void;
+  onDesignSystemsRefresh?: () => Promise<void> | void;
   onPersistComposioKey: (composio: AppConfig['composio']) => Promise<void> | void;
   onSkillsChange?: (skills: SkillSummary[]) => void;
   onOpenSettings: (section?: 'execution' | 'media' | 'composio' | 'orbit' | 'integrations' | 'mcpClient' | 'language' | 'appearance' | 'notifications' | 'pet' | 'library' | 'about') => void;
@@ -260,6 +263,9 @@ export function EntryView({
   onRenameProject,
   onChangeDefaultDesignSystem,
   onConfigChange,
+  onCreateDesignSystem,
+  onOpenDesignSystem,
+  onDesignSystemsRefresh,
   onPersistComposioKey,
   onSkillsChange,
   onOpenSettings,
@@ -348,6 +354,9 @@ export function EntryView({
       onRenameProject={onRenameProject}
       onChangeDefaultDesignSystem={onChangeDefaultDesignSystem}
       onConfigChange={onConfigChange}
+      onCreateDesignSystem={onCreateDesignSystem}
+      onOpenDesignSystem={onOpenDesignSystem}
+      onDesignSystemsRefresh={onDesignSystemsRefresh}
       onPersistComposioKey={onPersistComposioKey}
       onSkillsChange={onSkillsChange}
       onOpenSettings={onOpenSettings}
