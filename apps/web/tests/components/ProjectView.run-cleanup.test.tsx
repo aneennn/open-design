@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ProjectView,
   clearStreamingConversationMarker,
@@ -23,6 +23,7 @@ const fetchDesignSystem = vi.fn();
 const getTemplate = vi.fn();
 const fetchChatRunStatus = vi.fn();
 const listActiveChatRuns = vi.fn();
+const listProjectRuns = vi.fn();
 const reattachDaemonRun = vi.fn();
 const streamViaDaemon = vi.fn();
 const saveMessage = vi.fn();
@@ -42,6 +43,7 @@ vi.mock('../../src/providers/anthropic', () => ({
 vi.mock('../../src/providers/daemon', () => ({
   fetchChatRunStatus: (...args: unknown[]) => fetchChatRunStatus(...args),
   listActiveChatRuns: (...args: unknown[]) => listActiveChatRuns(...args),
+  listProjectRuns: (...args: unknown[]) => listProjectRuns(...args),
   reattachDaemonRun: (...args: unknown[]) => reattachDaemonRun(...args),
   streamViaDaemon: (...args: unknown[]) => streamViaDaemon(...args),
 }));
@@ -116,6 +118,10 @@ async function waitForReadyChatPaneProps() {
 }
 
 describe('ProjectView daemon cleanup', () => {
+  beforeEach(() => {
+    listProjectRuns.mockResolvedValue([]);
+  });
+
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
@@ -592,6 +598,7 @@ describe('ProjectView daemon cleanup', () => {
       onRunCreated?: (runId: string) => void;
     }) => {
       options.onRunCreated?.('run-ds-1');
+      await Promise.resolve();
       options.handlers.onDone();
     });
 
