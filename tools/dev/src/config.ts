@@ -8,6 +8,7 @@ import {
   SIDECAR_ENV,
   SIDECAR_SOURCES,
 } from "@open-design/sidecar-proto";
+import { resolveBundleBasePath } from "@open-design/bundle";
 import {
   resolveAppIpcPath,
   resolveAppRuntimePath,
@@ -30,6 +31,7 @@ export const DEFAULT_STOP_APPS = [APP_KEYS.DESKTOP, APP_KEYS.WEB, APP_KEYS.DAEMO
 export type ToolDevAppName = (typeof ALL_APPS)[number];
 
 export type ToolDevOptions = {
+  bundleBasePath?: string | null;
   daemonPort?: number | string | null;
   json?: boolean;
   namespace?: string;
@@ -61,6 +63,9 @@ export type ToolDevConfig = {
       sidecarEntryPath: string;
     };
   };
+  bundleActivationPath: string;
+  bundleBasePath: string;
+  dataRoot: string;
   namespace: string;
   namespaceRoot: string;
   toolsDevRoot: string;
@@ -157,6 +162,11 @@ export function resolveToolDevConfig(options: ToolDevOptions = {}): ToolDevConfi
     source: SIDECAR_SOURCES.TOOLS_DEV,
   });
   const namespaceRoot = resolveNamespaceRoot({ base: toolsDevRoot, namespace, contract: OPEN_DESIGN_SIDECAR_CONTRACT });
+  const dataRoot = path.join(namespaceRoot, "data");
+  const bundleBasePath = resolveBundleBasePath({
+    explicitBasePath: options.bundleBasePath ?? null,
+    namespaceDataPath: dataRoot,
+  });
   const daemon = resolveAppConfig({ app: APP_KEYS.DAEMON, namespace, namespaceRoot, toolsDevRoot });
   const desktop = resolveAppConfig({ app: APP_KEYS.DESKTOP, namespace, namespaceRoot, toolsDevRoot });
   const web = resolveAppConfig({ app: APP_KEYS.WEB, namespace, namespaceRoot, toolsDevRoot });
@@ -185,6 +195,9 @@ export function resolveToolDevConfig(options: ToolDevOptions = {}): ToolDevConfi
         sidecarEntryPath: path.join(WORKSPACE_ROOT, "apps/web/sidecar/index.ts"),
       },
     },
+    bundleActivationPath: path.join(dataRoot, "tools-dev-activation.json"),
+    bundleBasePath,
+    dataRoot,
     namespace,
     namespaceRoot,
     toolsDevRoot,

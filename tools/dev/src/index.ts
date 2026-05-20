@@ -62,11 +62,28 @@ import {
   waitForWebRuntime,
 } from "./sidecar-client.js";
 import { ensureDaemonGateForDesktop } from "./desktop-auth-gate.js";
+import {
+  TOOLS_DEV_WEB_BUNDLE_ENTRY,
+  addToolsDevBundle,
+  deleteToolsDevBundle,
+  listToolsDevBundles,
+  normalizeToolsDevBundleRef,
+  readToolsDevActivation,
+  resolveToolsDevBundle,
+  resolveToolsDevWebImplementation,
+  sidecarImplementationEnv,
+  writeToolsDevWebSource,
+  type ToolsDevWebSource,
+} from "./bundles.js";
 
 type CliOptions = ToolDevOptions & {
+  entry?: string;
   expr?: string;
+  key?: string;
   parentPid?: number;
   path?: string;
+  persistent?: boolean;
+  replace?: boolean;
   selector?: string;
   timeout?: string;
   updateAction?: string;
@@ -284,6 +301,16 @@ function urlPort(url: string): string {
   return parsed.protocol === "https:" ? "443" : "80";
 }
 
+function formatBundleRef(ref: { key: string; version: string }): string {
+  return `${ref.key}@${ref.version}`;
+}
+
+function formatWebSource(source: ToolsDevWebSource): string {
+  if (source.type === "workspace") return "workspace";
+  if (source.type === "explicitPath") return `explicit path ${source.entryPath}`;
+  return `bundle ${formatBundleRef(source.ref)} entry ${source.entry}`;
+}
+
 function statusMatchesForcedPort(url: string | null | undefined, forcedPort: number | null): boolean {
   return forcedPort == null || (url != null && urlPort(url) === String(forcedPort));
 }
@@ -385,13 +412,14 @@ async function assertNoStaleActiveProcess(config: ToolDevConfig, appName: ToolDe
 async function spawnSidecarRuntime(request: {
   appName: typeof APP_KEYS.DAEMON | typeof APP_KEYS.WEB;
   config: ToolDevConfig;
+  entryPath?: string;
   env: NodeJS.ProcessEnv;
   logHandle: FileHandle;
 }): Promise<{ pid: number }> {
   const { args: stampArgs, env } = createAppStamp(request.config, request.appName);
   const sidecarConfig = request.config.apps[request.appName];
   const spawned = await spawnBackgroundProcess({
-    args: [request.config.tsxCliPath, sidecarConfig.sidecarEntryPath, ...stampArgs],
+    args: [request.config.tsxCliPath, request.entryPath ?? sidecarConfig.sidecarEntryPath, ...stampArgs],
     command: process.execPath,
     cwd: request.config.workspaceRoot,
     detached: true,
@@ -453,13 +481,16 @@ async function spawnWebRuntime(config: ToolDevConfig, options: CliOptions): Prom
   const logHandle = await openAppLog(config, APP_KEYS.WEB);
 
   try {
+    const webImplementation = await resolveToolsDevWebImplementation(config);
     await ensureWebDevNodeModules(config);
     await writeWebDevTsconfig(config);
     await logHandle.write(`\n[tools-dev] launching web at ${new Date().toISOString()}\n`);
+    await logHandle.write(`[tools-dev] web implementation: ${formatWebSource(webImplementation.source)}\n`);
     await logHandle.write(`[tools-dev] proxying web API requests to daemon port ${daemonPort}\n`);
     return await spawnSidecarRuntime({
       appName: APP_KEYS.WEB,
       config,
+      entryPath: webImplementation.entryPath,
       env: {
         NODE_PATH: prependNodePath([
           path.join(config.workspaceRoot, "apps/web/node_modules"),
@@ -470,6 +501,7 @@ async function spawnWebRuntime(config: ToolDevConfig, options: CliOptions): Prom
         [SIDECAR_ENV.WEB_TSCONFIG_PATH]: config.apps.web.nextTsconfigPath,
         [SIDECAR_ENV.WEB_PORT]: String(webPort ?? 0),
         PORT: String(webPort ?? 0),
+        ...sidecarImplementationEnv(webImplementation.implementation),
         ...(options.parentPid == null ? {} : { [TOOLS_DEV_PARENT_PID_ENV]: String(options.parentPid) }),
         ...(options.prod === true
           ? { NODE_ENV: "production", OD_WEB_OUTPUT_MODE: "server", OD_WEB_PROD: "1" }
@@ -922,6 +954,120 @@ function printCheckResult(result: unknown, options: CliOptions): void {
   }
 }
 
+function printBundleResult(result: unknown, options: CliOptions, heading: string): void {
+  if (options.json === true) {
+    printJson(result);
+    return;
+  }
+
+  const record = asRecord(result);
+  process.stdout.write(`${heading}\n`);
+  const basePath = stringField(record ?? {}, "basePath");
+  if (basePath != null) process.stdout.write(`base: ${basePath}\n`);
+
+  const activation = asRecord(record?.activation);
+  const webSource = activation == null ? asRecord(record?.web) : asRecord(activation.web);
+  if (webSource != null) {
+    process.stdout.write(`active web: ${formatWebSource(webSource as ToolsDevWebSource)}\n`);
+  }
+
+  const bundle = asRecord(record?.bundle);
+  if (bundle != null) {
+    const ref = asRecord(bundle.ref);
+    process.stdout.write(`bundle: ${ref == null ? "unknown" : formatBundleRef(ref as { key: string; version: string })}\n`);
+    const bundlePath = stringField(bundle, "path");
+    const metadataPath = stringField(bundle, "metadataPath");
+    if (bundlePath != null) process.stdout.write(`path: ${bundlePath}\n`);
+    if (metadataPath != null) process.stdout.write(`metadata: ${metadataPath}\n`);
+  }
+
+  const deleted = record?.deleted;
+  if (typeof deleted === "boolean") process.stdout.write(`deleted: ${deleted ? "yes" : "no"}\n`);
+
+  const bundles = record?.bundles;
+  if (Array.isArray(bundles)) {
+    if (bundles.length === 0) {
+      process.stdout.write("(no bundles)\n");
+      return;
+    }
+    for (const entry of bundles) {
+      const bundleEntry = asRecord(entry);
+      const ref = asRecord(bundleEntry?.ref);
+      const displayRef = ref == null ? "unknown" : formatBundleRef(ref as { key: string; version: string });
+      const entryPath = stringField(bundleEntry ?? {}, "path") ?? "";
+      process.stdout.write(`- ${displayRef}${entryPath.length === 0 ? "" : ` · ${entryPath}`}\n`);
+    }
+  }
+}
+
+async function bundleList(config: ToolDevConfig, options: CliOptions): Promise<void> {
+  printBundleResult({
+    activation: await readToolsDevActivation(config),
+    basePath: config.bundleBasePath,
+    bundles: await listToolsDevBundles(config),
+  }, options, "tools-dev bundle list");
+}
+
+async function bundleAdd(
+  config: ToolDevConfig,
+  version: string,
+  sourcePath: string,
+  options: CliOptions,
+): Promise<void> {
+  const ref = normalizeToolsDevBundleRef({ key: options.key, version });
+  const bundle = await addToolsDevBundle({
+    config,
+    ref,
+    replace: options.replace === true,
+    sourcePath,
+  });
+  printBundleResult({ basePath: config.bundleBasePath, bundle }, options, "tools-dev bundle add");
+}
+
+async function bundleResolve(config: ToolDevConfig, version: string, options: CliOptions): Promise<void> {
+  const ref = normalizeToolsDevBundleRef({ key: options.key, version });
+  const bundle = await resolveToolsDevBundle({ config, ref });
+  printBundleResult({ basePath: config.bundleBasePath, bundle }, options, "tools-dev bundle resolve");
+}
+
+async function bundleDelete(config: ToolDevConfig, version: string, options: CliOptions): Promise<void> {
+  const ref = normalizeToolsDevBundleRef({ key: options.key, version });
+  const deleted = await deleteToolsDevBundle({ config, ref });
+  printBundleResult({ basePath: config.bundleBasePath, deleted }, options, "tools-dev bundle delete");
+}
+
+async function bundleUse(config: ToolDevConfig, version: string, options: CliOptions): Promise<void> {
+  const ref = normalizeToolsDevBundleRef({ key: options.key, version });
+  const web = {
+    entry: options.entry ?? TOOLS_DEV_WEB_BUNDLE_ENTRY,
+    ref,
+    type: "bundle" as const,
+  };
+  const activation = await writeToolsDevWebSource(config, web);
+  printBundleResult({ activation, basePath: config.bundleBasePath }, options, "tools-dev bundle use");
+}
+
+async function bundleUseWorkspace(config: ToolDevConfig, options: CliOptions): Promise<void> {
+  const activation = await writeToolsDevWebSource(config, { type: "workspace" });
+  printBundleResult({ activation, basePath: config.bundleBasePath }, options, "tools-dev bundle use-workspace");
+}
+
+async function bundleUsePath(config: ToolDevConfig, entryPath: string, options: CliOptions): Promise<void> {
+  const activation = await writeToolsDevWebSource(config, {
+    entryPath: path.resolve(entryPath),
+    ...(options.persistent === true ? { persistent: true } : {}),
+    type: "explicitPath",
+  });
+  printBundleResult({ activation, basePath: config.bundleBasePath }, options, "tools-dev bundle use-path");
+}
+
+async function bundleActive(config: ToolDevConfig, options: CliOptions): Promise<void> {
+  printBundleResult({
+    activation: await readToolsDevActivation(config),
+    basePath: config.bundleBasePath,
+  }, options, "tools-dev bundle active");
+}
+
 function parseTimeoutMs(value: string | undefined): number | undefined {
   if (value == null) return undefined;
   const seconds = Number(value);
@@ -1037,6 +1183,7 @@ function addSharedOptions(command: ReturnType<typeof cli.command>) {
   return command
     .option("--namespace <name>", "runtime namespace (default: default)")
     .option("--tools-dev-root <path>", "tools-dev runtime root")
+    .option("--bundle-base-path <path>", "bundle store base path (default: OD_BUNDLE_BASE_PATH or namespace data)")
     .option("--json", "print JSON");
 }
 
@@ -1093,6 +1240,53 @@ addSharedOptions(cli.command("logs [app]", "Show log tail for daemon, web, deskt
     printLogs(result, options);
   },
 );
+
+addSharedOptions(
+  cli.command(
+    "bundle <action> [target] [sourcePath]",
+    "Manage tools-dev bundles: list|active|add|resolve|delete|use|use-workspace|use-path",
+  ),
+)
+  .option("--key <key>", `bundle key (default: od:sidecar:web)`)
+  .option("--entry <path>", `entry inside the bundle (default: ${TOOLS_DEV_WEB_BUNDLE_ENTRY})`)
+  .option("--replace", "replace an existing bundle with the same key/version")
+  .option("--persistent", "mark an explicit path as persistent in status diagnostics")
+  .action(async (action: string, target: string | undefined, sourcePath: string | undefined, options: CliOptions) => {
+    const config = resolveToolDevConfig(options);
+    switch (action) {
+      case "list":
+        await bundleList(config, options);
+        return;
+      case "active":
+        await bundleActive(config, options);
+        return;
+      case "add":
+        if (target == null || sourcePath == null) throw new Error("bundle add requires <version> <sourcePath>");
+        await bundleAdd(config, target, sourcePath, options);
+        return;
+      case "resolve":
+        if (target == null) throw new Error("bundle resolve requires <version>");
+        await bundleResolve(config, target, options);
+        return;
+      case "delete":
+        if (target == null) throw new Error("bundle delete requires <version>");
+        await bundleDelete(config, target, options);
+        return;
+      case "use":
+        if (target == null) throw new Error("bundle use requires <version>");
+        await bundleUse(config, target, options);
+        return;
+      case "use-workspace":
+        await bundleUseWorkspace(config, options);
+        return;
+      case "use-path":
+        if (target == null) throw new Error("bundle use-path requires <entryPath>");
+        await bundleUsePath(config, target, options);
+        return;
+      default:
+        throw new Error(`unsupported bundle action: ${action}`);
+    }
+  });
 
 addSharedOptions(
   cli.command("inspect <app> [target]", "Inspect daemon/web status or desktop status/eval/screenshot/console/click"),

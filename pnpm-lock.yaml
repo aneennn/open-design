@@ -476,6 +476,9 @@ importers:
 
   tools/dev:
     dependencies:
+      '@open-design/bundle':
+        specifier: workspace:*
+        version: link:../../packages/bundle
       '@open-design/platform':
         specifier: workspace:*
         version: link:../../packages/platform

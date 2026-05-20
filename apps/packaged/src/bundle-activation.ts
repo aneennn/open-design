@@ -7,12 +7,12 @@ import {
   validateBundleRef,
   type BundleRef,
 } from "@open-design/bundle";
-import type { SidecarImplementationSnapshot } from "@open-design/sidecar-proto";
+import { SIDECAR_ENV, type SidecarImplementationSnapshot } from "@open-design/sidecar-proto";
 
 import type { PackagedNamespacePaths } from "./paths.js";
 
 export const PACKAGED_WEB_SIDECAR_BUNDLE_KEY = "od:sidecar:web";
-export const SIDECAR_IMPLEMENTATION_ENV = "OD_SIDECAR_IMPLEMENTATION_JSON";
+export const SIDECAR_IMPLEMENTATION_ENV = SIDECAR_ENV.IMPLEMENTATION;
 
 export type PackagedBundleActivationSource =
   | { type: "builtin" }
