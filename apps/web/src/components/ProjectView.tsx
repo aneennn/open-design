@@ -1864,7 +1864,12 @@ export function ProjectView({
                 let nextFiles = beforeFiles;
                 let recoveredExistingArtifact: ProjectFile | null = null;
                 if (parsedArtifact?.html) {
-                  recoveredExistingArtifact = findExistingArtifactProjectFile(parsedArtifact, nextFiles);
+                  const runStartedAt = status.createdAt || message.startedAt || message.createdAt;
+                  recoveredExistingArtifact = findExistingArtifactProjectFile(
+                    parsedArtifact,
+                    nextFiles,
+                    { minMtime: runStartedAt },
+                  );
                   if (recoveredExistingArtifact) {
                     savedArtifactRef.current = recoveredExistingArtifact.name;
                     requestOpenFile(recoveredExistingArtifact.name);
@@ -3812,35 +3817,40 @@ function artifactBaseNameFor(art: Artifact): string {
   );
 }
 
-function findExistingArtifactProjectFile(
+export function findExistingArtifactProjectFile(
   art: Artifact,
   projectFiles: ProjectFile[],
+  options: { minMtime?: number } = {},
 ): ProjectFile | null {
   const ext = artifactExtensionFor(art);
   const baseName = artifactBaseNameFor(art);
   const candidateFileName = `${baseName}${ext}`;
+  const minMtime = options.minMtime;
+  const currentRunFiles = typeof minMtime === 'number' && Number.isFinite(minMtime)
+    ? projectFiles.filter((file) => file.mtime >= minMtime)
+    : projectFiles;
 
   if (ext === '.html') {
     const pointerTarget = resolveHtmlPointerArtifactTarget({
       content: art.html,
       candidateFileName,
-      projectFiles,
+      projectFiles: currentRunFiles,
     });
     const pointerFile = pointerTarget
-      ? projectFiles.find((file) => file.name === pointerTarget || file.path === pointerTarget)
+      ? currentRunFiles.find((file) => file.name === pointerTarget || file.path === pointerTarget)
       : null;
     if (pointerFile) return pointerFile;
   }
 
   const identifier = art.identifier || '';
   if (identifier) {
-    const manifestMatches = projectFiles
+    const manifestMatches = currentRunFiles
       .filter((file) => file.artifactManifest?.metadata?.identifier === identifier)
       .sort((a, b) => b.mtime - a.mtime);
     if (manifestMatches[0]) return manifestMatches[0];
   }
 
-  return projectFiles.find((file) => file.name === candidateFileName) ?? null;
+  return currentRunFiles.find((file) => file.name === candidateFileName) ?? null;
 }
 
 function assistantAgentDisplayName(

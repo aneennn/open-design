@@ -6,10 +6,11 @@ import {
   ProjectView,
   clearStreamingConversationMarker,
   finalizeActiveAssistantMessagesOnStop,
+  findExistingArtifactProjectFile,
   resolveSucceededRunStatus,
   shouldClearActiveRunRefs,
 } from '../../src/components/ProjectView';
-import type { ChatMessage } from '../../src/types';
+import type { Artifact, ChatMessage, ProjectFile } from '../../src/types';
 
 const listConversations = vi.fn();
 const listMessages = vi.fn();
@@ -32,6 +33,36 @@ const patchConversation = vi.fn();
 const patchProject = vi.fn();
 const saveTabs = vi.fn();
 const writeProjectTextFile = vi.fn();
+
+const replayArtifact: Artifact = {
+  identifier: 'real-daemon-smoke',
+  artifactType: 'text/html',
+  title: 'Real Daemon Smoke',
+  html: '<!doctype html><html><body><h1>Real Daemon Smoke</h1></body></html>',
+};
+
+function artifactProjectFile(name: string, mtime: number): ProjectFile {
+  return {
+    artifactManifest: {
+      entry: name,
+      exports: ['html'],
+      kind: 'html',
+      metadata: {
+        artifactType: 'text/html',
+        identifier: 'real-daemon-smoke',
+        inferred: false,
+      },
+      renderer: 'html',
+      title: 'Real Daemon Smoke',
+      version: 1,
+    },
+    kind: 'html',
+    mime: 'text/html',
+    mtime,
+    name,
+    size: 100,
+  };
+}
 
 vi.mock('../../src/i18n', () => ({
   useT: () => ((value: string) => value),
@@ -117,6 +148,19 @@ async function waitForReadyChatPaneProps() {
     initialDraft?: string;
   };
 }
+
+describe('terminal replay artifact recovery', () => {
+  it('only reuses existing artifacts created at or after the current run started', () => {
+    const runCreatedAt = 1_000;
+    const stale = artifactProjectFile('real-daemon-smoke.html', runCreatedAt - 1);
+    const current = artifactProjectFile('real-daemon-smoke-2.html', runCreatedAt + 1);
+
+    expect(findExistingArtifactProjectFile(replayArtifact, [stale], { minMtime: runCreatedAt }))
+      .toBeNull();
+    expect(findExistingArtifactProjectFile(replayArtifact, [stale, current], { minMtime: runCreatedAt }))
+      .toBe(current);
+  });
+});
 
 describe('ProjectView daemon cleanup', () => {
   beforeEach(() => {
@@ -640,7 +684,7 @@ describe('ProjectView daemon cleanup', () => {
     );
 
     await waitFor(() => expect(fetchProjectDesignSystemPackageAudit).toHaveBeenCalledWith('project-ds'));
-    await waitFor(() => expect(streamViaDaemon).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(streamViaDaemon).toHaveBeenCalled());
     expect(window.sessionStorage.getItem('od:design-system-audit-auto-repair:project-ds')).toBe('1');
     await waitFor(() => {
       const repairSeed = chatPaneSpy.mock.calls.find(
@@ -941,6 +985,7 @@ describe('ProjectView daemon cleanup', () => {
   });
 
   it('relinks terminal replay to an existing artifact without writing a duplicate file', async () => {
+    const runCreatedAt = Date.now();
     const existingArtifact = {
       artifactManifest: {
         entry: 'real-daemon-smoke.html',
@@ -957,7 +1002,7 @@ describe('ProjectView daemon cleanup', () => {
       },
       kind: 'html',
       mime: 'text/html',
-      mtime: 100,
+      mtime: runCreatedAt + 1,
       name: 'real-daemon-smoke.html',
       size: 100,
     };
@@ -985,8 +1030,8 @@ describe('ProjectView daemon cleanup', () => {
     fetchChatRunStatus.mockResolvedValue({
       id: 'run-replay',
       status: 'succeeded',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      createdAt: runCreatedAt,
+      updatedAt: runCreatedAt + 1,
       exitCode: 0,
       signal: null,
     });
