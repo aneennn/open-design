@@ -49,7 +49,16 @@ interface Props {
 }
 
 const STORAGE_KEY = 'open-design:workspace-tabs:v1';
+const OPEN_WORKSPACE_TAB_EVENT = 'open-design:workspace-tabs:open';
 const MAX_SEARCH_RESULTS = 80;
+
+export function openWorkspaceTab(route: Route): void {
+  window.dispatchEvent(
+    new CustomEvent<{ route: Route }>(OPEN_WORKSPACE_TAB_EVENT, {
+      detail: { route },
+    }),
+  );
+}
 
 function nowId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -314,6 +323,26 @@ export function WorkspaceTabsBar({ route, projects }: Props) {
   // browser's scroll position whenever the active id flips — keeps the
   // current tab visible after a route change even if the user had
   // scrolled the strip elsewhere.
+  useEffect(() => {
+    function onOpenWorkspaceTab(event: Event) {
+      const detail = (event as CustomEvent<{ route?: Route }>).detail;
+      const nextRoute = detail?.route;
+      if (!nextRoute) return;
+      const nextTab = tabFromRoute(nextRoute);
+      setState((current) => {
+        const normalized = normalizeTabsState(current);
+        return normalizeTabsState({
+          tabs: [...normalized.tabs, nextTab],
+          activeTabId: nextTab.id,
+        });
+      });
+      setTabsMenuOpen(false);
+    }
+
+    window.addEventListener(OPEN_WORKSPACE_TAB_EVENT, onOpenWorkspaceTab);
+    return () => window.removeEventListener(OPEN_WORKSPACE_TAB_EVENT, onOpenWorkspaceTab);
+  }, []);
+
   useEffect(() => {
     const stripElement = stripRef.current;
     if (!stripElement) return;

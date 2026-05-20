@@ -113,14 +113,56 @@ function defaultPluginInputsForCreate(
   input: CreateInput,
   pluginId: string | null,
 ): Record<string, unknown> | null {
-  if (pluginId !== 'od-media-generation') return null;
   const kind = input.metadata.kind;
+  const projectName = input.name.trim();
+
+  if (pluginId === 'example-web-prototype') {
+    return {
+      artifactKind: input.metadata.includeLandingPage
+        ? 'landing page'
+        : 'web prototype',
+      fidelity: input.metadata.fidelity ?? 'high-fidelity',
+      audience: 'product evaluators',
+      designSystem: 'the active project design system',
+      template: input.metadata.templateLabel ?? 'the bundled web prototype seed',
+    };
+  }
+
+  if (pluginId === 'example-simple-deck') {
+    return {
+      deckType: 'pitch deck',
+      topic: projectName || 'the user brief',
+      audience: 'decision makers',
+      slideCount: 10,
+      speakerNotes: input.metadata.speakerNotes
+        ? 'include speaker notes'
+        : 'no speaker notes',
+      designSystem: 'the active project design system',
+    };
+  }
+
+  if (pluginId === 'od-new-generation') {
+    const templateLabel = input.metadata.templateLabel?.trim();
+    const artifactKind =
+      kind === 'template'
+        ? 'artifact based on a saved template'
+        : kind === 'other'
+          ? 'custom design artifact'
+          : `${kind} artifact`;
+    return {
+      artifactKind,
+      audience: 'product and design reviewers',
+      topic: templateLabel || projectName || 'the user brief',
+    };
+  }
+
+  if (pluginId !== 'od-media-generation') return null;
   if (kind !== 'image' && kind !== 'video' && kind !== 'audio') return null;
 
   const promptTemplate = input.metadata.promptTemplate;
   const subject =
     promptTemplate?.prompt?.trim()
-    || input.name.trim()
+    || projectName
     || promptTemplate?.title?.trim()
     || `${kind} concept`;
   const style =
@@ -250,7 +292,7 @@ interface Props {
       autoSendFirstMessage?: boolean;
       pendingFiles?: File[];
     },
-  ) => void;
+  ) => Promise<boolean> | boolean | void;
   onCreatePluginShareProject: (
     pluginId: string,
     action: PluginShareAction,
@@ -459,7 +501,7 @@ export function EntryShell({
     // single row without touching the form.
     const pluginId = defaultPluginIdForMetadata(input.metadata);
     const pluginInputs = defaultPluginInputsForCreate(input, pluginId);
-    onCreateProject({
+    return onCreateProject({
       ...input,
       ...(pluginId ? { pluginId } : {}),
       ...(pluginInputs ? { pluginInputs } : {}),
