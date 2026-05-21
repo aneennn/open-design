@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { execFile, spawn, type ChildProcessByStdio } from 'node:child_process';
-import { access, mkdir, stat } from 'node:fs/promises';
+import { access, mkdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import type { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
@@ -191,6 +191,7 @@ macDescribe('packaged mac runtime smoke', () => {
 
       updaterFixture = await startUpdaterFixtureProcess(updateScenario);
       applyPackagedUpdateEnv(process.env, updateScenario, updaterFixture.info.metadataUrl);
+      await seedPackagedOnboardingComplete();
 
       const start = await runToolsPackJson<MacStartResult>('start');
       started = true;
@@ -1798,6 +1799,12 @@ async function pathExists(filePath: string): Promise<boolean> {
 
 async function fileSizeBytes(filePath: string): Promise<number> {
   return (await stat(filePath)).size;
+}
+
+async function seedPackagedOnboardingComplete(): Promise<void> {
+  const configPath = join(runtimeNamespaceRoot, 'data', 'app-config.json');
+  await mkdir(dirname(configPath), { recursive: true });
+  await writeFile(configPath, `${JSON.stringify({ onboardingCompleted: true }, null, 2)}\n`, 'utf8');
 }
 
 function resolveFromWorkspace(filePath: string): string {

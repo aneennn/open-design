@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { execFile, spawn, type ChildProcessByStdio } from 'node:child_process';
-import { mkdir, readFile, stat } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import type { Readable } from 'node:stream';
@@ -261,6 +261,7 @@ winDescribe('packaged windows runtime smoke', () => {
 
       updaterFixture = await startUpdaterFixtureProcess(updateScenario);
       applyPackagedUpdateEnv(process.env, updateScenario, updaterFixture.info.metadataUrl);
+      await seedPackagedOnboardingComplete();
 
       let start = await measureSmokeStep(timings, 'start', async () => runToolsPackJson<WinStartResult>('start'));
       started = true;
@@ -760,6 +761,12 @@ async function fileSizeBytes(filePath: string): Promise<number> {
 
 async function readTiming(filePath: string): Promise<TimingResult> {
   return JSON.parse(await readFile(filePath, 'utf8')) as TimingResult;
+}
+
+async function seedPackagedOnboardingComplete(): Promise<void> {
+  const configPath = join(runtimeNamespaceRoot, 'data', 'app-config.json');
+  await mkdir(dirname(configPath), { recursive: true });
+  await writeFile(configPath, `${JSON.stringify({ onboardingCompleted: true }, null, 2)}\n`, 'utf8');
 }
 
 async function resolveExpectedUpdateRoot(installDir: string): Promise<string> {
