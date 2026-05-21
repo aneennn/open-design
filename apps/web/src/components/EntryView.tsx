@@ -112,7 +112,15 @@ interface Props {
   onCreateDesignSystem?: () => void;
   renderDesignSystemCreation?: (
     onBack: () => void,
-    hooks?: { onBeforeGenerate?: (snapshot: DesignSystemGenerateSnapshot) => void },
+    hooks?: {
+      onBeforeGenerate?: (snapshot: DesignSystemGenerateSnapshot) => void;
+      onGenerateSettled?: (
+        snapshot: DesignSystemGenerateSnapshot,
+        outcome:
+          | { result: 'success' }
+          | { result: 'failed'; errorCode: string },
+      ) => void;
+    },
   ) => ReactNode;
   onOpenDesignSystem?: (id: string) => void;
   onDesignSystemsRefresh?: () => Promise<void> | void;

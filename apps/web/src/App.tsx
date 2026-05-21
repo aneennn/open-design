@@ -1444,6 +1444,7 @@ export function App() {
             config={config}
             onOpenConnectorsTab={() => openSettings('composio')}
             {...(hooks?.onBeforeGenerate ? { onBeforeGenerate: hooks.onBeforeGenerate } : {})}
+            {...(hooks?.onGenerateSettled ? { onGenerateSettled: hooks.onGenerateSettled } : {})}
           />
         )}
         onOpenDesignSystem={(id: string) => navigate({ kind: 'design-system-detail', designSystemId: id })}

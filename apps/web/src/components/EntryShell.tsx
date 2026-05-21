@@ -251,7 +251,15 @@ interface Props {
   onCreateDesignSystem?: () => void;
   renderDesignSystemCreation?: (
     onBack: () => void,
-    hooks?: { onBeforeGenerate?: (snapshot: DesignSystemGenerateSnapshot) => void },
+    hooks?: {
+      onBeforeGenerate?: (snapshot: DesignSystemGenerateSnapshot) => void;
+      onGenerateSettled?: (
+        snapshot: DesignSystemGenerateSnapshot,
+        outcome:
+          | { result: 'success' }
+          | { result: 'failed'; errorCode: string },
+      ) => void;
+    },
   ) => ReactNode;
   onOpenDesignSystem?: (id: string) => void;
   onDesignSystemsRefresh?: () => Promise<void> | void;
@@ -745,7 +753,15 @@ function OnboardingView({
   onRefreshAgents: () => Promise<AgentInfo[]> | AgentInfo[];
   renderDesignSystemCreation?: (
     onBack: () => void,
-    hooks?: { onBeforeGenerate?: (snapshot: DesignSystemGenerateSnapshot) => void },
+    hooks?: {
+      onBeforeGenerate?: (snapshot: DesignSystemGenerateSnapshot) => void;
+      onGenerateSettled?: (
+        snapshot: DesignSystemGenerateSnapshot,
+        outcome:
+          | { result: 'success' }
+          | { result: 'failed'; errorCode: string },
+      ) => void;
+    },
   ) => ReactNode;
   onFinish: () => void;
 }) {
@@ -901,6 +917,26 @@ function OnboardingView({
     if (stepIdx === 0) return { area: 'runtime', stepIndex: '1', stepName: 'connect' };
     if (stepIdx === 1) return { area: 'about_you', stepIndex: '2', stepName: 'about_you' };
     return { area: 'design_system', stepIndex: '3', stepName: 'design_system' };
+  }
+  // Pure mapping from `DesignSystemGenerateSnapshot` to the v2
+  // `TrackingOnboardingSourceType` enum. Single-source batches collapse
+  // to that source's literal; mixed batches go to `'mixed'`; the empty
+  // batch falls back to `'text'` when the user typed a brand
+  // description (prompt-only path, which the v2 contract reserves the
+  // `'text'` literal for) and `'none'` otherwise. The pre-fix version
+  // shipped `'none'` for prompt-only too, losing the prompt-only vs
+  // truly-empty distinction the dashboard needs.
+  function deriveOnboardingSourceType(
+    snapshot: DesignSystemGenerateSnapshot,
+  ): import('@open-design/contracts/analytics').TrackingOnboardingSourceType {
+    if (snapshot.sourceCount === 0) {
+      return snapshot.hasBrandDescription ? 'text' : 'none';
+    }
+    if (snapshot.githubRepoCount === snapshot.sourceCount) return 'github_repo';
+    if (snapshot.localFolderCount === snapshot.sourceCount) return 'local_code';
+    if (snapshot.figFileCount === snapshot.sourceCount) return 'fig';
+    if (snapshot.assetFileCount === snapshot.sourceCount) return 'assets';
+    return 'mixed';
   }
   function emitOnboardingClick(
     element: TrackingOnboardingClickElement,
@@ -1543,39 +1579,49 @@ function OnboardingView({
               </div>
               {renderDesignSystemCreation(() => setStep(1), {
                 onBeforeGenerate: (snapshot) => {
-                  // Fired BEFORE the embedded DS creation flow's
-                  // async work begins; the snapshot reports the
-                  // user-pinned source material the onboarding
-                  // wrapper otherwise can't see. We use it for both
-                  // the `generate` click row (so dashboards can split
-                  // by source count) and the lifecycle complete row
-                  // (which marks completion_type=with_design_system).
+                  // INTENT signal — fires before async DS-draft create
+                  // / workspace-open work runs. Use it ONLY for the
+                  // `generate` click row so the dashboard captures
+                  // user intent even when generation later errors.
+                  // The lifecycle `onboarding_complete_result` row
+                  // moved to `onGenerateSettled` below so a draft
+                  // create failure no longer ships as
+                  // `completion_type=completed_with_design_system`.
                   emitOnboardingClick('generate', 'generate', {
-                    source_type:
-                      snapshot.sourceCount === 0
-                        ? 'none'
-                        : snapshot.githubRepoCount === snapshot.sourceCount
-                          ? 'github_repo'
-                          : snapshot.localFolderCount === snapshot.sourceCount
-                            ? 'local_code'
-                            : snapshot.figFileCount === snapshot.sourceCount
-                              ? 'fig'
-                              : snapshot.assetFileCount === snapshot.sourceCount
-                                ? 'assets'
-                                : 'mixed',
+                    source_type: deriveOnboardingSourceType(snapshot),
                     source_count: snapshot.sourceCount,
                     has_brand_description: snapshot.hasBrandDescription,
                   });
+                },
+                onGenerateSettled: (snapshot, outcome) => {
+                  // OUTCOME signal — fires from `DesignSystemCreationFlow`
+                  // *after* the create/workspace branch settles.
+                  // Success → emit lifecycle complete row with
+                  //   `completion_type=completed_with_design_system`.
+                  //   Generation hand-off navigates away from this
+                  //   tab; the post-Generate `chat_panel` page_view
+                  //   in ProjectView fires the 4th-step
+                  //   `area=generation_progress` row and clears the
+                  //   session id. Don't clear here.
+                  // Failure → emit lifecycle complete with
+                  //   `result=failed`, the daemon's failure code, and
+                  //   `completed_without_design_system` so we don't
+                  //   overstate completed-with-DS funnel. Clear the
+                  //   session id since the user stays in this view.
+                  if (outcome.result === 'success') {
+                    emitOnboardingComplete(
+                      'completed',
+                      'completed_with_design_system',
+                      { sourceSnapshot: snapshot },
+                    );
+                    return;
+                  }
                   emitOnboardingComplete(
-                    'completed',
-                    'completed_with_design_system',
-                    { sourceSnapshot: snapshot },
+                    'failed',
+                    'completed_without_design_system',
+                    { sourceSnapshot: snapshot, errorCode: outcome.errorCode },
                   );
-                  // Generation hand-off navigates away; the DS detail
-                  // view's `area=generation_progress` page_view reads
-                  // the same session id from sessionStorage and is
-                  // responsible for clearing it after that 4th-step
-                  // emission lands. Don't clear here.
+                  clearOnboardingSessionId();
                 },
               })}
             </div>
