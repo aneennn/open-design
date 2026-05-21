@@ -46,6 +46,7 @@ describe('i18n locales', () => {
   it('prefers explicit and host locales before browser fallback', () => {
     expect(resolveInitialLocalePreference({
       storedLocale: 'ja',
+      storedLocaleSource: 'manual',
       hostLocale: 'zh-CN',
       browserLanguages: ['en-US'],
     })).toBe('ja');
@@ -59,6 +60,12 @@ describe('i18n locales', () => {
       hostLocale: null,
       browserLanguages: ['de-DE'],
     })).toBe('de');
+    expect(resolveInitialLocalePreference({
+      storedLocale: 'ja',
+      storedLocaleSource: null,
+      hostLocale: 'zh-CN',
+      browserLanguages: ['en-US'],
+    })).toBe('zh-CN');
   });
 
   it('registers every supported locale in the language menu', () => {

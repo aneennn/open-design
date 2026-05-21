@@ -59,6 +59,8 @@ const DICTS: Record<Locale, Dict> = {
 };
 
 const LS_KEY = 'open-design:locale';
+const LS_SOURCE_KEY = 'open-design:locale-source';
+const MANUAL_LOCALE_SOURCE = 'manual';
 
 export function resolveSystemLocale(languages: readonly string[]): Locale | null {
   const supported = LOCALES as readonly string[];
@@ -86,13 +88,19 @@ export function resolveSystemLocale(languages: readonly string[]): Locale | null
 export function resolveInitialLocalePreference({
   browserLanguages,
   hostLocale,
+  storedLocaleSource,
   storedLocale,
 }: {
   browserLanguages: readonly string[];
   hostLocale?: string | null;
+  storedLocaleSource?: string | null;
   storedLocale?: string | null;
 }): Locale {
-  if (storedLocale && (LOCALES as readonly string[]).includes(storedLocale)) {
+  if (
+    storedLocaleSource === MANUAL_LOCALE_SOURCE &&
+    storedLocale &&
+    (LOCALES as readonly string[]).includes(storedLocale)
+  ) {
     return storedLocale as Locale;
   }
 
@@ -105,17 +113,21 @@ export function resolveInitialLocalePreference({
 // First-run defaults to the user's browser/system language when possible.
 // Desktop hosts inject the OS locale because packaged Chromium can report
 // its own locale through navigator.language instead of the user's system
-// language. An explicit user pick saved to localStorage always wins.
+// language. Only a value tagged as a manual user pick wins; legacy cached
+// values must not pin the app to an old system language forever.
 function detectInitialLocale(): Locale {
   if (typeof window === 'undefined') return 'en';
   let storedLocale: string | null = null;
+  let storedLocaleSource: string | null = null;
   try {
     storedLocale = window.localStorage.getItem(LS_KEY);
+    storedLocaleSource = window.localStorage.getItem(LS_SOURCE_KEY);
   } catch {
     /* ignore */
   }
   return resolveInitialLocalePreference({
     storedLocale,
+    storedLocaleSource,
     hostLocale: detectOpenDesignHostLocale(),
     browserLanguages: navigator.languages?.length ? navigator.languages : [navigator.language],
   });
@@ -154,6 +166,7 @@ export function I18nProvider({ initial, children }: ProviderProps) {
     setLocaleState(next);
     try {
       window.localStorage.setItem(LS_KEY, next);
+      window.localStorage.setItem(LS_SOURCE_KEY, MANUAL_LOCALE_SOURCE);
     } catch {
       /* ignore */
     }
