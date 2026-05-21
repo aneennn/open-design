@@ -858,7 +858,10 @@ export function FileWorkspace({
             aria-label={t('workspace.showChat')}
             onClick={() => onFocusModeChange(false)}
           >
-            <Icon name="chevron-right" size={15} />
+            <span className="panel-toggle-glyph" aria-hidden>
+              <Icon name="chevron-right" size={13} />
+              <Icon name="chevron-right" size={13} />
+            </span>
           </button>
         ) : null}
         <div

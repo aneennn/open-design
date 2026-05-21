@@ -785,7 +785,7 @@ export function ChatPane({
                 onCollapse();
               }}
             >
-              <span className="chat-collapse-glyph" aria-hidden>
+              <span className="panel-toggle-glyph" aria-hidden>
                 <Icon name="chevron-left" size={13} />
                 <Icon name="chevron-left" size={13} />
               </span>

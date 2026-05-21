@@ -1898,14 +1898,14 @@ a.avatar-item:visited {
   justify-content: center;
 }
 .chat-header-actions .icon-only:hover { background: var(--bg-subtle); color: var(--text); }
-.chat-collapse-glyph {
+.panel-toggle-glyph {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0;
   line-height: 0;
 }
-.chat-collapse-glyph svg + svg {
+.panel-toggle-glyph svg + svg {
   margin-left: -8px;
 }
 
