@@ -206,4 +206,28 @@ describe('PluginsHomeSection (category bar)', () => {
 
     expect(pluginIds()).toEqual(['prototype-dashboard']);
   });
+
+  it('Clear filters from the Saved empty state escapes Saved mode back to the full catalog', () => {
+    // Fresh browser, no saved plugins yet. Clicking Saved lands the
+    // user on the empty filter state — the recovery CTA must take
+    // them all the way back to the catalog, not just re-render the
+    // same Saved empty view.
+    renderSection();
+
+    fireEvent.click(screen.getByTestId('plugins-home-chip-saved'));
+    expect(screen.queryByRole('list')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /Clear filters/i }));
+
+    expect(pluginIds().sort()).toEqual([
+      'audio-voice',
+      'deck-pitch',
+      'hyperframes-composition',
+      'image-logo',
+      'prototype-app',
+      'prototype-dashboard',
+      'video-cinematic',
+      'video-short',
+    ]);
+  });
 });

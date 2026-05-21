@@ -159,6 +159,12 @@ export function usePluginFacets({
   function clearFacets(): void {
     setSelection(EMPTY_SELECTION);
     setQuery('');
+    // Saved overrides the facet slice, so the empty-state "Clear
+    // filters" CTA also has to leave Saved mode — otherwise clicking
+    // it from a Saved + zero-match view just re-renders the same
+    // empty state and the user has no one-click escape back to the
+    // full catalog.
+    setMode('all');
   }
 
   const hasActiveFacet =

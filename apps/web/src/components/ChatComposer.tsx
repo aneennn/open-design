@@ -15,7 +15,7 @@ import {
   trackChatPanelClick,
 } from '../analytics/events';
 import { IMAGE_MODELS } from "../media/models";
-import { projectRawUrl, uploadProjectFiles, fetchConnectors } from "../providers/registry";
+import { projectRawUrl, uploadProjectFiles, openFolderDialog, fetchConnectors } from "../providers/registry";
 import { patchProject } from "../state/projects";
 import { fetchMcpServers } from "../state/mcp";
 import type { McpServerConfig, McpTemplate } from "../state/mcp";
@@ -879,6 +879,18 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       if (files.length > 0) void uploadFiles(files);
     }
 
+    async function handleLinkFolder() {
+      if (!projectId) return;
+      const selected = await openFolderDialog();
+      if (!selected) return;
+      const base = projectMetadata ?? { kind: 'prototype' as const };
+      const existing = base.linkedDirs ?? [];
+      if (existing.includes(selected)) return;
+      const metadata: ProjectMetadata = { ...base, linkedDirs: [...existing, selected] };
+      const result = await patchProject(projectId, { metadata });
+      if (result?.metadata) onProjectMetadataChange?.(result.metadata);
+    }
+
     async function handleUnlinkFolder(dir: string) {
       if (!projectId) return;
       const base = projectMetadata ?? { kind: 'prototype' as const };
@@ -1502,7 +1514,13 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                       />
                     ) : null}
                     {toolsTab === 'import' ? (
-                      <ToolsImportPanel t={t} />
+                      <ToolsImportPanel
+                        t={t}
+                        onLinkFolder={async () => {
+                          setToolsOpen(false);
+                          await handleLinkFolder();
+                        }}
+                      />
                     ) : null}
                   </div>
                 </div>
@@ -2230,11 +2248,24 @@ function pluginSourceLabel(plugin: InstalledPluginRecord): string {
   return plugin.sourceKind === 'bundled' ? 'Official' : 'My plugin';
 }
 
-function ToolsImportPanel({ t }: { t: TranslateFn }) {
+function ToolsImportPanel({
+  t,
+  onLinkFolder,
+}: {
+  t: TranslateFn;
+  onLinkFolder: () => Promise<void> | void;
+}) {
   return (
     <div className="composer-tools-list">
       <ImportItem icon="upload" label={t('chat.importFig')} t={t} />
       <ImportItem icon="grid" label={t('chat.importWeb')} t={t} />
+      <ImportItem
+        icon="folder"
+        label={t('chat.importFolder')}
+        t={t}
+        enabled
+        onClick={() => void onLinkFolder()}
+      />
       <ImportItem icon="sparkles" label={t('chat.importSkills')} t={t} />
       <ImportItem icon="file" label={t('chat.importProject')} t={t} />
     </div>
