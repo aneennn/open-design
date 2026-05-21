@@ -184,6 +184,7 @@ import { renderDesignSystemPreview } from './design-system-preview.js';
 import { renderDesignSystemShowcase } from './design-system-showcase.js';
 import { createChatRunService } from './runs.js';
 import { deriveRunErrorCode, runResultFromStatus } from './run-result.js';
+import { countNewHtmlArtifacts } from './run-artifacts.js';
 import { reportRunCompletedFromDaemon } from './langfuse-bridge.js';
 import {
   createAnalyticsService,
@@ -10835,7 +10836,13 @@ export async function startServer({
             ...baseProps,
             area: 'chat_panel',
             result,
-            artifact_count: 0,
+            // Incremental count of `.html` paths the run produced or
+            // modified, deduped per file. Replaces the hard-coded `0`
+            // that masked the "did this run actually generate an
+            // artifact?" funnel on PostHog. See `run-artifacts.ts`
+            // for the dedup semantics; tested in
+            // `tests/run-artifacts.test.ts`.
+            artifact_count: countNewHtmlArtifacts(run.events),
             total_duration_ms: Date.now() - runStartedAt,
             ...(errorCode ? { error_code: errorCode } : {}),
             ...(inputTokens !== undefined ? { input_tokens: inputTokens } : {}),

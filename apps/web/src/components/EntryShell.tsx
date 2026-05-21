@@ -8,7 +8,7 @@
 // can be rebased without touching this file. `EntryView` becomes a
 // thin wrapper that passes data and callbacks through to this shell.
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   defaultScenarioPluginIdForKind,
   type ConnectorDetail,
@@ -862,18 +862,26 @@ function OnboardingView({
   // exposure. The fourth step (`generation`) lives in
   // `DesignSystemDetailView` because the user navigates out of this
   // component once the design system project opens; that emission
-  // reads the same `onboarding_session_id` from sessionStorage.
-  // `clearOnboardingSessionId` runs on `onFinish` / unmount so a
-  // later DS visit unrelated to onboarding doesn't inherit the id.
+  // reads the same `onboarding_session_id` from sessionStorage and
+  // clears it once it fires.
+  //
+  // We do NOT clear on unmount: the Generate path unmounts
+  // OnboardingView *before* DesignSystemDetailView mounts, so an
+  // unmount-clear would race the 4th-step emission and consistently
+  // wipe the id before it could be read (observed on PostHog —
+  // `area=generation_progress` had zero events after PR #2390).
+  // The Skip path clears via `onFinishWithCleanup` below; the
+  // Generate path clears from `DesignSystemDetailView` after the
+  // generation_progress event lands; abandoned sessions clear on
+  // sessionStorage tab close.
   const onboardingSessionIdRef = useRef<string>('');
   if (!onboardingSessionIdRef.current) {
     onboardingSessionIdRef.current = getOrCreateOnboardingSessionId();
   }
-  useEffect(() => {
-    return () => {
-      clearOnboardingSessionId();
-    };
-  }, []);
+  const onFinishWithCleanup = useCallback(() => {
+    clearOnboardingSessionId();
+    onFinish();
+  }, [onFinish]);
   useEffect(() => {
     const onboardingSessionId = onboardingSessionIdRef.current;
     if (!onboardingSessionId) return;
@@ -1068,7 +1076,10 @@ function OnboardingView({
 
   function handlePrimaryAction() {
     if (isLastStep) {
-      onFinish();
+      // Last-step "Continue" without generating a design system: same
+      // shape as Skip — clear the session id so a later unrelated DS
+      // visit doesn't claim onboarding attribution.
+      onFinishWithCleanup();
       return;
     }
     setStep((current) => current + 1);
@@ -1353,7 +1364,7 @@ function OnboardingView({
                     <span>{t('settings.onboardingDesignIntroReuseBody')}</span>
                   </div>
                 </div>
-                <button type="button" className="onboarding-view__ds-skip" onClick={onFinish}>
+                <button type="button" className="onboarding-view__ds-skip" onClick={onFinishWithCleanup}>
                   {t('settings.onboardingSkip')}
                 </button>
               </div>
@@ -1387,7 +1398,7 @@ function OnboardingView({
               <button
                 type="button"
                 className="onboarding-view__secondary"
-                onClick={() => (step === 0 ? onFinish() : setStep((current) => current - 1))}
+                onClick={() => (step === 0 ? onFinishWithCleanup() : setStep((current) => current - 1))}
               >
                 {step === 0 ? t('settings.onboardingSkip') : t('settings.onboardingBack')}
               </button>
