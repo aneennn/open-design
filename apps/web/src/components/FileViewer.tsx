@@ -5722,6 +5722,17 @@ function HtmlViewer({
                   {boardMode && boardTool === 'inspect' ? <span className="viewer-action-active-dot" aria-hidden /> : null}
                 </button>
               </div>
+              <button
+                className={`viewer-action${manualEditMode ? ' active' : ''}`}
+                type="button"
+                data-testid="manual-edit-mode-toggle"
+                title="Edit content"
+                aria-pressed={manualEditMode}
+                onClick={activateManualEditTool}
+              >
+                <RemixIcon name="edit-line" size={15} />
+                <span>Edit</span>
+              </button>
               <div className="artifact-tool-menu-anchor">
                 <button
                   type="button"
@@ -5782,6 +5793,7 @@ function HtmlViewer({
                     setPalettePopoverOpen(false);
                   }}
                 >
+                  <RemixIcon name="pencil-ruler-line" size={15} />
                   <span>Manual</span>
                   <Icon name="chevron-right" size={13} style={{ transform: 'rotate(90deg)' }} />
                   {selectedPalette ? (
@@ -5872,17 +5884,6 @@ function HtmlViewer({
                   onClose={() => setPalettePopoverOpen(false)}
                 />
               </div>
-              <button
-                className={`viewer-action${manualEditMode ? ' active' : ''}`}
-                type="button"
-                data-testid="manual-edit-mode-toggle"
-                title="Edit content"
-                aria-pressed={manualEditMode}
-                onClick={activateManualEditTool}
-              >
-                <RemixIcon name="edit-line" size={15} />
-                <span>Edit</span>
-              </button>
               {source !== null && mode === 'preview' ? (
                 <div className="zoom-menu viewer-toolbar-zoom" ref={zoomMenuRef}>
                   <button
