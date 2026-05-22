@@ -5990,15 +5990,12 @@ a.avatar-item:visited {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  /* The parent `.newproj` is `overflow: hidden`; the card needs to be the
-     scroll container so taller form variants (image/media tabs, validation
-     messages, compact-height windows) stay reachable inside the sidebar.
-     `flex: 0 1 auto` keeps the card at its natural content height when the
-     form is short (so there's no big white void at the bottom of the
-     card), but lets `flex-shrink: 1` collapse it down to the available
-     space when content is long — at which point `overflow-y: auto` takes
-     over and the body scrolls. */
-  flex: 0 1 auto;
+  /* The parent `.newproj` is `overflow: hidden`; the card needs to own the
+     remaining height so tall variants (template, image/media, validation
+     states, compact-height windows) always keep their bottom controls
+     reachable via this scroll region instead of getting clipped by the
+     modal shell. */
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
 }
