@@ -1,0 +1,21 @@
+[package]
+name = "open-design-launcher"
+version = "0.1.0"
+edition = "2024"
+publish = false
+build = "build.rs"
+
+[workspace]
+members = [
+  "crates/launcher-core",
+  "crates/launcher-platform",
+]
+resolver = "3"
+
+[dependencies]
+launcher-core = { path = "crates/launcher-core" }
+launcher-platform = { path = "crates/launcher-platform" }
+serde_json = "1.0.145"
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1.31"

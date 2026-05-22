@@ -1,0 +1,9 @@
+[package]
+name = "launcher-platform"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+launcher-core = { path = "../launcher-core" }
+thiserror = "2.0.17"
