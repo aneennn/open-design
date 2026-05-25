@@ -1138,7 +1138,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         reset();
         return;
       }
-      if ((!prompt && staged.length === 0 && nextCommentAttachments.length === 0) || streaming) return;
+      if (!prompt && staged.length === 0 && nextCommentAttachments.length === 0) return;
       sendComposedTurn(prompt, staged, nextCommentAttachments, contextMeta);
     }
 

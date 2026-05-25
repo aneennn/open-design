@@ -489,6 +489,7 @@ describe('FileViewer SVG artifacts', () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole('button', { name: 'Manual' }));
     fireEvent.click(screen.getByTestId('inspect-mode-toggle'));
 
     await waitFor(() => {
@@ -496,12 +497,10 @@ describe('FileViewer SVG artifacts', () => {
       expect(activeFrame.getAttribute('data-od-render-mode')).toBe('srcdoc');
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Code' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Code' }));
     expect(screen.queryByTestId('artifact-preview-frame')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Code' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Preview' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
 
     const remountedFrame = screen.getByTestId('artifact-preview-frame') as HTMLIFrameElement;
     const postMessageSpy = vi.spyOn(remountedFrame.contentWindow!, 'postMessage');
@@ -701,7 +700,7 @@ describe('FileViewer SVG artifacts', () => {
 
     // Back on Preview, clicking the entry opens the HTML page and closes the
     // dead-end module tab (icons.jsx) in one move.
-    fireEvent.click(screen.getByRole('button', { name: /preview/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^preview$/i }));
     fireEvent.click(await screen.findByRole('button', { name: /backups\.html/ }));
     expect(onOpenFileReplacing).toHaveBeenCalledWith('backups.html', 'icons.jsx');
   });

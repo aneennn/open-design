@@ -222,8 +222,6 @@ describe('FileViewer manual edit history regressions', () => {
       expect(frame.getAttribute('data-od-render-mode')).toBe('srcdoc');
       expect(panelState.props?.draft.fullSource).toContain('Hero');
     });
-    const postMessageSpy = vi.spyOn(getActivePreviewFrame().contentWindow!, 'postMessage');
-
     act(() => {
       panelState.props?.onApplyPatch(
         { id: 'hero', kind: 'set-text', value: 'Updated hero' },
@@ -234,13 +232,7 @@ describe('FileViewer manual edit history regressions', () => {
     await waitFor(() => expect(savedSources).toHaveLength(1));
     await waitFor(() => expect(panelState.props?.draft.fullSource).toContain('Updated hero'));
     await waitFor(() => {
-      expect(postMessageSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'od:srcdoc-transport-activate',
-          html: expect.stringContaining('Updated hero'),
-        }),
-        '*',
-      );
+      expect(getActivePreviewFrame().srcdoc).toContain('Updated hero');
     });
   });
 });
