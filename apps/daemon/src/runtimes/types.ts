@@ -51,6 +51,7 @@ export type RuntimeAgentDef = {
   ) => string[];
   streamFormat: string;
   fallbackBins?: string[];
+  versionProbeTimeoutMs?: number;
   helpArgs?: string[];
   capabilityFlags?: Record<string, string>;
   promptViaStdin?: boolean;
@@ -120,6 +121,7 @@ export type DetectedAgent = Omit<
   | 'helpArgs'
   | 'capabilityFlags'
   | 'fallbackBins'
+  | 'versionProbeTimeoutMs'
   | 'maxPromptArgBytes'
   | 'env'
 > & {
