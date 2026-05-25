@@ -1376,6 +1376,7 @@ describe('SettingsDialog media providers interactions', () => {
     expect(screen.queryByLabelText('Black Forest Labs API key')).toBeNull();
     expect(screen.queryByLabelText('Black Forest Labs Base URL')).toBeNull();
     expect(document.querySelector('.media-provider-coming-soon')).toBeTruthy();
+    expect(screen.getByText('ComfyUI')).toBeTruthy();
   });
 
   it('renders ElevenLabs as an integrated media provider with enabled inputs', () => {
