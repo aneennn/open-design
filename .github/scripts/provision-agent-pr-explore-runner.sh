@@ -128,11 +128,19 @@ step "5. SSH deploy key"
 if [ -f "$DEPLOY_KEY" ]; then
   ok "deploy key present: $DEPLOY_KEY"
 else
-  ssh-keygen -t ed25519 -N "" -C "agent-pr-explore-deploy@$(hostname)" -f "$DEPLOY_KEY" >/dev/null
-  ok "generated $DEPLOY_KEY"
+  # On a fresh-rebuild host ~/.ssh often does not exist yet; create it first so
+  # ssh-keygen doesn't fail with "No such file or directory".
+  mkdir -p "$(dirname "$DEPLOY_KEY")" && chmod 700 "$(dirname "$DEPLOY_KEY")" 2>/dev/null || true
+  if ssh-keygen -t ed25519 -N "" -C "agent-pr-explore-deploy@$(hostname)" -f "$DEPLOY_KEY" >/dev/null; then
+    ok "generated $DEPLOY_KEY"
+  else
+    warn "ssh-keygen failed — deploy key NOT created; mirror bootstrap will not work until fixed."
+  fi
 fi
-warn "ensure this pubkey is a READ-ONLY deploy key on $BASE_REPO (manual step C):"
-echo "        $(cat "$DEPLOY_KEY.pub")"
+if [ -f "$DEPLOY_KEY.pub" ]; then
+  warn "ensure this pubkey is a READ-ONLY deploy key on $BASE_REPO (manual step C):"
+  echo "        $(cat "$DEPLOY_KEY.pub")"
+fi
 
 # --- 6. base repo git mirror (so per-PR fetches are small deltas) ------------
 step "6. git mirror"
