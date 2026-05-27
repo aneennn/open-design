@@ -769,6 +769,7 @@ export const fr: Dict = {
   'chat.comments.sending': 'Envoi…',
   'chat.comments.edit': 'Modifier',
   'chat.comments.select': 'Sélectionner',
+  'chat.comments.selectAll': 'Tout sélectionner',
   'chat.comments.deselect': 'Désélectionner',
   'chat.comments.nSelected': '{n} sélectionné(s)',
   'chat.comments.pin': 'Épingler',

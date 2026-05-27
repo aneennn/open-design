@@ -753,6 +753,7 @@ export const ko: Dict = {
   'chat.comments.sending': 'Sending…',
   'chat.comments.edit': 'Edit',
   'chat.comments.select': 'Select',
+  'chat.comments.selectAll': '모두 선택',
   'chat.comments.deselect': 'Deselect',
   'chat.comments.nSelected': '{n} selected',
   'chat.comments.pin': 'Pin',

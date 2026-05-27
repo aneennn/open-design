@@ -867,6 +867,7 @@ export const id: Dict = {
   'chat.comments.sending': 'Sending…',
   'chat.comments.edit': 'Edit',
   'chat.comments.select': 'Select',
+  'chat.comments.selectAll': 'Pilih semua',
   'chat.comments.deselect': 'Deselect',
   'chat.comments.nSelected': '{n} selected',
   'chat.comments.pin': 'Pin',

@@ -775,6 +775,7 @@ export const uk: Dict = {
   'chat.comments.sending': 'Sending…',
   'chat.comments.edit': 'Edit',
   'chat.comments.select': 'Select',
+  'chat.comments.selectAll': 'Вибрати все',
   'chat.comments.deselect': 'Deselect',
   'chat.comments.nSelected': '{n} selected',
   'chat.comments.pin': 'Pin',

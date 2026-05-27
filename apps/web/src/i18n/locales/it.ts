@@ -680,6 +680,7 @@ export const it: Dict = {
   'chat.comments.updateSend': 'Aggiorna e invia',
   'chat.comments.removeAttachment': 'Rimuovi commento allegato',
   'chat.comments.removeAttachmentAria': 'Rimuovi commento allegato per {name}',
+  'chat.comments.selectAll': 'Seleziona tutto',
   'chat.annotationNotePlaceholder': 'Add a note for this mark',
   'chat.annotationQueue': 'Queue',
   'chat.annotationQueueing': 'Queueing...',

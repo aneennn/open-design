@@ -1399,7 +1399,9 @@ describe('FileViewer tweaks toolbar', () => {
     const labels: Partial<Record<keyof Dict, string>> = {
       'chat.tabComments': 'Comments',
       'chat.comments.emptySaved': 'No saved comments.',
+      'chat.comments.selectAll': 'Select all',
       'common.close': 'Close',
+      'common.delete': 'Delete',
       'preview.showSidebar': 'Show Comments',
       'preview.hideSidebar': 'Hide Comments',
     };
@@ -2024,6 +2026,8 @@ describe('FileViewer tweaks toolbar', () => {
   it('closes the comment side panel from the header close button', () => {
     const onCollapseChange = vi.fn();
     const onClose = vi.fn();
+    const onSelectAll = vi.fn();
+    const onDeleteComment = vi.fn();
 
     function Harness() {
       const [collapsed, setCollapsed] = useState(false);
@@ -2060,8 +2064,10 @@ describe('FileViewer tweaks toolbar', () => {
             setOpen(false);
           }}
           onToggleSelect={() => {}}
+          onSelectAll={onSelectAll}
           onClearSelection={() => {}}
           onReply={() => {}}
+          onDeleteComment={onDeleteComment}
           onSendSelected={() => {}}
           sending={false}
           t={t}
@@ -2073,6 +2079,9 @@ describe('FileViewer tweaks toolbar', () => {
 
     expect(screen.getByTestId('comment-side-panel')).toBeTruthy();
     expect(screen.getByText('不要github，换成微信')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Select all' }).hasAttribute('disabled')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(onDeleteComment).toHaveBeenCalledWith('comment-1');
 
     fireEvent.click(screen.getByRole('button', { name: /close/i }));
 

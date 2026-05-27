@@ -753,6 +753,7 @@ export const hu: Dict = {
   'chat.comments.sending': 'Sending…',
   'chat.comments.edit': 'Edit',
   'chat.comments.select': 'Select',
+  'chat.comments.selectAll': 'Összes kijelölése',
   'chat.comments.deselect': 'Deselect',
   'chat.comments.nSelected': '{n} selected',
   'chat.comments.pin': 'Pin',

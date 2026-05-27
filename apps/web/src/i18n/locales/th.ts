@@ -709,6 +709,7 @@ export const th: Dict = {
   'chat.comments.sending': 'Sending…',
   'chat.comments.edit': 'Edit',
   'chat.comments.select': 'Select',
+  'chat.comments.selectAll': 'เลือกทั้งหมด',
   'chat.comments.deselect': 'Deselect',
   'chat.comments.nSelected': '{n} selected',
   'chat.comments.pin': 'Pin',

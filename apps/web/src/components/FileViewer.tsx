@@ -1965,8 +1965,10 @@ export function CommentSidePanel({
   onCollapsedChange,
   onClose,
   onToggleSelect,
+  onSelectAll,
   onClearSelection,
   onReply,
+  onDeleteComment,
   onSendSelected,
   onCreateComment,
   sending,
@@ -1980,8 +1982,10 @@ export function CommentSidePanel({
   onCollapsedChange: (collapsed: boolean) => void;
   onClose: () => void;
   onToggleSelect: (commentId: string) => void;
+  onSelectAll: () => void;
   onClearSelection: () => void;
   onReply: (comment: PreviewComment) => void;
+  onDeleteComment?: (commentId: string) => void | Promise<void>;
   onSendSelected: () => void | Promise<void>;
   onCreateComment?: (note: string) => boolean | Promise<boolean>;
   sending: boolean;
@@ -1992,6 +1996,7 @@ export function CommentSidePanel({
   const sorted = [...comments].sort((a, b) => b.createdAt - a.createdAt);
   const visibleSelectedIds = new Set(comments.filter((comment) => selectedIds.has(comment.id)).map((comment) => comment.id));
   const selectedCount = visibleSelectedIds.size;
+  const allSelected = comments.length > 0 && selectedCount === comments.length;
   const commentsLabel = t('chat.tabComments');
   const canCreateComment = Boolean(onCreateComment) && newCommentDraft.trim().length > 0 && !sending;
   const submitNewComment = async () => {
@@ -2023,6 +2028,17 @@ export function CommentSidePanel({
           <RemixIcon name="message-3-line" size={15} />
           <span>{commentsLabel}</span>
         </div>
+        <div className="comment-side-header-actions">
+          {comments.length > 0 ? (
+            <button
+              type="button"
+              className="comment-side-select-all"
+              disabled={allSelected}
+              onClick={onSelectAll}
+            >
+              {t('chat.comments.selectAll')}
+            </button>
+          ) : null}
         <button
           type="button"
           className="comment-side-close"
@@ -2032,6 +2048,7 @@ export function CommentSidePanel({
         >
           <Icon name="close" size={12} />
         </button>
+        </div>
       </div>
       <div className="comment-side-list">
         {sorted.length === 0 ? (
@@ -2063,6 +2080,17 @@ export function CommentSidePanel({
                 >
                   {selected ? <Icon name="check" size={11} /> : null}
                 </button>
+                {onDeleteComment ? (
+                  <button
+                    type="button"
+                    className="comment-side-delete"
+                    aria-label={t('common.delete')}
+                    title={t('common.delete')}
+                    onClick={() => void onDeleteComment(comment.id)}
+                  >
+                    <Icon name="trash" size={12} />
+                  </button>
+                ) : null}
               </div>
               <div className="comment-side-body">{comment.note}</div>
               <button
@@ -6246,6 +6274,7 @@ const [manualEditTargets, setManualEditTargets] = useState<ManualEditTarget[]>([
           return next;
         });
       }}
+      onSelectAll={() => setSelectedSideCommentIds(new Set(visibleSideComments.map((comment) => comment.id)))}
       onClearSelection={() => setSelectedSideCommentIds(new Set())}
       onReply={(comment) => {
         // Reply == edit on a flat-thread model: prefill the
@@ -6276,6 +6305,16 @@ const [manualEditTargets, setManualEditTargets] = useState<ManualEditTarget[]>([
         setCommentPanelOpen(true);
         setCommentSidePanelCollapsed(false);
       }}
+      onDeleteComment={onRemovePreviewComment ? async (commentId) => {
+        await onRemovePreviewComment(commentId);
+        setSelectedSideCommentIds((current) => {
+          if (!current.has(commentId)) return current;
+          const next = new Set(current);
+          next.delete(commentId);
+          return next;
+        });
+        setActivePreviewCommentId((current) => (current === commentId ? null : current));
+      } : undefined}
       onSendSelected={async () => {
         if (!onSendBoardCommentAttachments) return;
         const selected = visibleSideComments.filter(

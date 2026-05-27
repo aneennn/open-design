@@ -1336,6 +1336,7 @@ export const zhCN: Dict = {
   'chat.comments.sending': '发送中…',
   'chat.comments.edit': '编辑',
   'chat.comments.select': '选择',
+  'chat.comments.selectAll': '全选',
   'chat.comments.deselect': '取消选择',
   'chat.comments.nSelected': '已选择 {n} 个',
   'chat.comments.pin': '图钉',
