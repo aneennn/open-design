@@ -366,10 +366,12 @@ export function PreviewModal({
     [activeHtml, activeDeck],
   );
   const exportTitle = exportTitleFor(activeView?.id ?? '');
+  const canExportFiles = Boolean(activeHtml);
+  const fallbackShareUrl = canExportFiles && typeof window !== 'undefined'
+    ? window.location.href
+    : '';
   const previewShareTitle = shareTarget?.title || exportTitle || title;
-  const previewShareUrl = shareTarget?.url || (
-    typeof window === 'undefined' ? '' : window.location.href
-  );
+  const previewShareUrl = shareTarget?.url || fallbackShareUrl;
   const previewShareText = t('preview.shareTextDefault', { title: previewShareTitle });
   const previewShareCopy = previewShareUrl
     ? `${previewShareText}\n${previewShareUrl}`
@@ -454,6 +456,8 @@ export function PreviewModal({
   }
 
   const showTabs = views.length > 1;
+  const showTemplateShareMenu = !isCustomView || Boolean(shareTarget?.url);
+  const canOpenTemplateShareMenu = canExportFiles || Boolean(previewShareUrl);
 
   return (
     <div className="ds-modal-backdrop" role="dialog" aria-modal="true" aria-label={`${title} preview`}>
@@ -540,7 +544,7 @@ export function PreviewModal({
               >
                 {fullscreen ? t('preview.exit') : t('preview.fullscreen')}
               </button>
-              {isCustomView ? null : (
+              {showTemplateShareMenu ? (
                 <div className="share-menu template-share-menu" ref={templateShareRef}>
                   <button
                     className="ghost template-share-trigger"
@@ -550,7 +554,7 @@ export function PreviewModal({
                       onShareClick?.();
                       setTemplateShareOpen((v) => !v);
                     }}
-                    disabled={!activeHtml}
+                    disabled={!canOpenTemplateShareMenu}
                   >
                     <Icon name="share" size={12} />
                     <span>{t('preview.shareMenu')}</span>
@@ -676,77 +680,79 @@ export function PreviewModal({
                           </span>
                         </button>
                       </section>
-                      <section className="template-share-section">
-                        <div className="template-share-section__label">
-                          {t('preview.shareExportGroup')}
-                        </div>
-                        <button
-                          type="button"
-                          className="share-menu-item"
-                          role="menuitem"
-                          onClick={() => {
-                            onSharePopoverItemClick?.('pdf');
-                            setTemplateShareOpen(false);
-                            if (activeHtml) {
-                              exportAsPdf(activeHtml, exportTitle, { deck: activeDeck });
-                            }
-                          }}
-                        >
-                          <span className="share-menu-icon">
-                            <Icon name="file" size={14} />
-                          </span>
-                          <span>{t('common.exportPdf')}</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="share-menu-item"
-                          role="menuitem"
-                          onClick={() => {
-                            onSharePopoverItemClick?.('zip');
-                            setTemplateShareOpen(false);
-                            if (activeHtml) exportAsZip(activeHtml, exportTitle);
-                          }}
-                        >
-                          <span className="share-menu-icon">
-                            <Icon name="download" size={14} />
-                          </span>
-                          <span>{t('common.exportZip')}</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="share-menu-item"
-                          role="menuitem"
-                          onClick={() => {
-                            onSharePopoverItemClick?.('html');
-                            setTemplateShareOpen(false);
-                            if (activeHtml) exportAsHtml(activeHtml, exportTitle);
-                          }}
-                        >
-                          <span className="share-menu-icon">
-                            <Icon name="file-code" size={14} />
-                          </span>
-                          <span>{t('common.exportHtml')}</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="share-menu-item"
-                          role="menuitem"
-                          onClick={() => {
-                            onSharePopoverItemClick?.('open_in_new_tab');
-                            setTemplateShareOpen(false);
-                            openInNewTab();
-                          }}
-                        >
-                          <span className="share-menu-icon">
-                            <Icon name="external-link" size={14} />
-                          </span>
-                          <span>{t('preview.openInNewTab')}</span>
-                        </button>
-                      </section>
+                      {canExportFiles ? (
+                        <section className="template-share-section">
+                          <div className="template-share-section__label">
+                            {t('preview.shareExportGroup')}
+                          </div>
+                          <button
+                            type="button"
+                            className="share-menu-item"
+                            role="menuitem"
+                            onClick={() => {
+                              onSharePopoverItemClick?.('pdf');
+                              setTemplateShareOpen(false);
+                              if (activeHtml) {
+                                exportAsPdf(activeHtml, exportTitle, { deck: activeDeck });
+                              }
+                            }}
+                          >
+                            <span className="share-menu-icon">
+                              <Icon name="file" size={14} />
+                            </span>
+                            <span>{t('common.exportPdf')}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="share-menu-item"
+                            role="menuitem"
+                            onClick={() => {
+                              onSharePopoverItemClick?.('zip');
+                              setTemplateShareOpen(false);
+                              if (activeHtml) exportAsZip(activeHtml, exportTitle);
+                            }}
+                          >
+                            <span className="share-menu-icon">
+                              <Icon name="download" size={14} />
+                            </span>
+                            <span>{t('common.exportZip')}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="share-menu-item"
+                            role="menuitem"
+                            onClick={() => {
+                              onSharePopoverItemClick?.('html');
+                              setTemplateShareOpen(false);
+                              if (activeHtml) exportAsHtml(activeHtml, exportTitle);
+                            }}
+                          >
+                            <span className="share-menu-icon">
+                              <Icon name="file-code" size={14} />
+                            </span>
+                            <span>{t('common.exportHtml')}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="share-menu-item"
+                            role="menuitem"
+                            onClick={() => {
+                              onSharePopoverItemClick?.('open_in_new_tab');
+                              setTemplateShareOpen(false);
+                              openInNewTab();
+                            }}
+                          >
+                            <span className="share-menu-icon">
+                              <Icon name="external-link" size={14} />
+                            </span>
+                            <span>{t('preview.openInNewTab')}</span>
+                          </button>
+                        </section>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
-              )}
+              ) : null}
               {headerExtras}
             </div>
           </div>

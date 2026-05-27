@@ -301,6 +301,37 @@ describe('PreviewModal unavailable state', () => {
     }
   });
 
+  it('keeps social sharing available for custom media views without file exports', () => {
+    render(
+      <PreviewModal
+        {...baseProps}
+        views={[
+          {
+            id: 'media',
+            label: 'Image',
+            custom: <div>Poster preview</div>,
+          },
+        ]}
+        shareTarget={{
+          title: 'Media Template',
+          url: 'https://open-design.ai/plugins/templates/media-template',
+        }}
+        onView={() => {}}
+        onClose={() => {}}
+      />,
+    );
+
+    const share = screen.getByRole('button', { name: /share/i });
+    expect((share as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(share);
+
+    expect(screen.getByRole('menuitem', { name: /X \/ Twitter/i })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: /Copy template link/i })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: /Export as PDF/i })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /Download as \.zip/i })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /Export as standalone HTML/i })).toBeNull();
+  });
+
   it('does not call onView for an unavailable view (no fetch to retry)', () => {
     // PreviewModal fires onView on mount so the parent can lazy-load
     // the active view. For an unavailable view that signal is harmless
