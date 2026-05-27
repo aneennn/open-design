@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-27T11:45:16.565Z",
+  "generatedAt": "2026-05-27T12:35:07.522Z",
   "contributors": {
     "1115052994": {
       "lastAnnouncedTier": "spark",
@@ -190,8 +190,8 @@
     },
     "lefarcen": {
       "lastAnnouncedTier": "nova",
-      "lastKnownScore": 6797,
-      "lastCheckedAt": "2026-05-27T09:15:30.618Z",
+      "lastKnownScore": 6847,
+      "lastCheckedAt": "2026-05-27T12:35:07.522Z",
       "scoreVersion": "weighted-v1",
       "lastAnnouncedAt": "2026-05-12T11:23:17.911Z"
     },
