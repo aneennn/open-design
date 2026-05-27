@@ -6476,7 +6476,6 @@ const [manualEditTargets, setManualEditTargets] = useState<ManualEditTarget[]>([
                   {boardMode && !commentCreateMode && boardTool === 'inspect' ? <span className="viewer-action-active-dot" aria-hidden /> : null}
                 </button>
               </div>
-              <span className="viewer-toolbar-tool-divider" aria-hidden />
               <button
                 className={`viewer-action viewer-action-icon${manualEditMode ? ' active' : ''}`}
                 type="button"
