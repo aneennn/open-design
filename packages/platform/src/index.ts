@@ -194,6 +194,10 @@ function buildNoProxyValue(tokens: Iterable<string>): string | null {
   return values.length > 0 ? values.join(",") : null;
 }
 
+function preserveWildcardNoProxyValue(noProxy: string | null | undefined): string | undefined {
+  return noProxy?.trim() === "*" ? "*" : undefined;
+}
+
 function normalizeProxyUrl(raw: string, scheme: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
@@ -222,7 +226,8 @@ function finalizeSystemProxyEnv(
 ): NodeJS.ProcessEnv {
   const hasProxy = Boolean(values.httpProxy || values.httpsProxy || values.allProxy);
   const noProxy = hasProxy
-    ? buildNoProxyValue([
+    ? preserveWildcardNoProxyValue(values.noProxy) ??
+      buildNoProxyValue([
         ...(values.noProxy ? values.noProxy.split(",") : []),
         "localhost",
         "127.0.0.1",
