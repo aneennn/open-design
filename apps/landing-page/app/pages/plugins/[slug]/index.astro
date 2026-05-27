@@ -16,6 +16,8 @@
 import Layout from '../../../_components/sub-page-layout.astro';
 import {
   getBundledPlugins,
+  resolveBundledDescription,
+  resolveBundledTitle,
   type BundledPluginRecord,
 } from '../../../_lib/bundled-plugins';
 import { getPluginsCopy } from '../../../_lib/plugins-i18n';
@@ -36,6 +38,12 @@ const { plugin } = Astro.props as Props;
 const locale = localeFromPath(Astro.url.pathname);
 const href = (path: string) => localizedHref(path, locale);
 const pcopy = getPluginsCopy(locale);
+// Localized name + blurb resolved at render time via the `title_i18n` /
+// `description_i18n` maps shipped alongside each manifest. The static-paths
+// pass runs once for all locales, so the prop carries English baselines and
+// the per-locale lookup happens here.
+const pluginTitle = resolveBundledTitle(plugin, locale);
+const pluginDescription = resolveBundledDescription(plugin, locale);
 
 /*
  * Author normalisation. First-party manifests authored by Open Design
@@ -53,8 +61,8 @@ const authorUrl = plugin.authorUrl
   ? (ORG_TO_REPO[plugin.authorUrl.replace(/\/$/, '')] ?? plugin.authorUrl)
   : undefined;
 
-const title = `${plugin.title} · Open Design plugin`;
-const description = plugin.description;
+const title = `${pluginTitle} · Open Design plugin`;
+const description = pluginDescription;
 
 /*
  * Share-dialog copy. The English template stays as a fallback inside
@@ -65,7 +73,7 @@ const description = plugin.description;
  * UX without a per-page script bundle.
  */
 const pluginUrl = `https://open-design.ai${plugin.detailHref}`;
-const shareCopy = pcopy.shareTemplate({ title: plugin.title, url: pluginUrl });
+const shareCopy = pcopy.shareTemplate({ title: pluginTitle, url: pluginUrl });
 
 const jsonLd = [
   {
@@ -74,13 +82,13 @@ const jsonLd = [
     itemListElement: [
       { '@type': 'ListItem', position: 1, name: 'Open Design', item: Astro.site?.toString() },
       { '@type': 'ListItem', position: 2, name: 'Plugins', item: new URL('/plugins/', Astro.site).toString() },
-      { '@type': 'ListItem', position: 3, name: plugin.title, item: new URL(plugin.detailHref, Astro.site).toString() },
+      { '@type': 'ListItem', position: 3, name: pluginTitle, item: new URL(plugin.detailHref, Astro.site).toString() },
     ],
   },
   {
     '@context': 'https://schema.org',
     '@type': 'SoftwareSourceCode',
-    name: plugin.title,
+    name: pluginTitle,
     description,
     codeRepository: plugin.sourceUrl,
     programmingLanguage: 'JSON',
@@ -96,7 +104,7 @@ const jsonLd = [
     <span>/</span>
     <a href={href('/plugins/')}>{pcopy.hubLabel}</a>
     <span>/</span>
-    <span aria-current="page">{plugin.title}</span>
+    <span aria-current="page">{pluginTitle}</span>
   </nav>
 
   <article class="detail">
@@ -104,7 +112,7 @@ const jsonLd = [
       <span class="label">
         {pcopy.hubLabel} · {pcopy.detailBucketLabel[plugin.bucket]}
       </span>
-      <h1 class="display">{plugin.title}<span class="dot">.</span></h1>
+      <h1 class="display">{pluginTitle}<span class="dot">.</span></h1>
       <p class="lead">{description}</p>
       <div class="detail-actions">
         <a class="btn btn-primary" href="https://github.com/nexu-io/open-design/releases" target="_blank" rel="noopener">
@@ -163,12 +171,12 @@ const jsonLd = [
           <details class="detail-preview-live">
             <summary
               class="detail-preview-thumb-trigger"
-              aria-label={`Open interactive preview for ${plugin.title}`}
+              aria-label={`Open interactive preview for ${pluginTitle}`}
             >
               <img
                 class="detail-preview-static"
                 src={plugin.previewPoster}
-                alt={`${plugin.title} preview`}
+                alt={`${pluginTitle} preview`}
                 loading="eager"
                 fetchpriority="high"
               />
@@ -179,7 +187,7 @@ const jsonLd = [
             <div class="detail-preview-frame-wrap">
               <iframe
                 src={plugin.previewEntryUrl}
-                title={`${plugin.title} interactive preview`}
+                title={`${pluginTitle} interactive preview`}
                 loading="lazy"
                 sandbox="allow-scripts allow-same-origin"
                 class="detail-preview-frame"
@@ -199,7 +207,7 @@ const jsonLd = [
           <img
             class="detail-preview-static"
             src={plugin.previewPoster}
-            alt={`${plugin.title} preview`}
+            alt={`${pluginTitle} preview`}
             loading="eager"
             fetchpriority="high"
           />

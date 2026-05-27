@@ -9,7 +9,11 @@
  * forcing every callsite to write the same five-column markup twice.
  */
 import type { SkillRecord, TemplateRecord } from '../_lib/catalog';
-import type { BundledPluginRecord } from '../_lib/bundled-plugins';
+import {
+  resolveBundledDescription,
+  resolveBundledTitle,
+  type BundledPluginRecord,
+} from '../_lib/bundled-plugins';
 import { localeFromPath, localizedHref } from '../i18n';
 import { localizeTaxonomyValue } from '../content-i18n';
 
@@ -74,8 +78,8 @@ if (item.kind === 'skill') {
   // the row gets the diagonal-stripe placeholder and styling stays
   // consistent with the rest of the catalog.
   detailHref = item.record.detailHref;
-  name = item.record.title;
-  description = item.record.description;
+  name = resolveBundledTitle(item.record, locale);
+  description = resolveBundledDescription(item.record, locale);
   previewUrl = item.record.previewPoster ?? null;
   // Bundled-plugin records ship raw taxonomy slugs (e.g. `video`, `image`).
   // Run them through the shared TAXONOMY_TERMS map so the chip rail localizes
