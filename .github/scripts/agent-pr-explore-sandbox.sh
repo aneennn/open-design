@@ -675,7 +675,6 @@ function writeTraceViewerFiles(viewerUrl) {
     ok: false,
     video: null,
     trace: "playwright-smoke-trace.zip",
-    legacyTrace: "playwright-trace.zip",
     traceViewerUrl: viewerUrl || null,
   };
 
@@ -1174,7 +1173,7 @@ seed_agent_fixture "$agent_fixture"
 if [ "$deterministic_verifier" = "web-static-export" ] && [ "$browser_exploration_needed" != "true" ]; then
   verifier_status="$(cat "$artifacts/deterministic-verifier-exit-code.txt" 2>/dev/null || echo 1)"
   if [ "$verifier_status" = "0" ]; then
-    cat > "$artifacts/expect.log" <<REPORT
+    cat > "$agent_report_file" <<REPORT
 ### ✅ Verdict: Pass
 
 This PR changes the web deployment/static-export path rather than an interactive user flow. The agent therefore used the deterministic Docker verifier instead of inventing browser interaction cases that would not exercise the changed behavior.
@@ -1208,7 +1207,7 @@ Observed result:
 - A dedicated CI smoke for the Vercel/static-export command would make this regression class easier to catch without requiring agent exploration.
 REPORT
   else
-    cat > "$artifacts/expect.log" <<REPORT
+    cat > "$agent_report_file" <<REPORT
 ### ❌ Verdict: Fail
 
 The deterministic static-export verifier failed. Because this PR changes build/deploy output rather than an interactive browser flow, browser exploration would not be a useful substitute for the failing build-level signal.
@@ -1237,7 +1236,7 @@ REPORT
 fi
 
 if [ "$app_surface_touched" != "true" ]; then
-  cat > "$artifacts/expect.log" <<REPORT
+  cat > "$agent_report_file" <<REPORT
 ### ⚪ Verdict: Inconclusive
 
 This PR does not touch a path that the browser explorer can map to app UI/runtime behavior, so the run avoided inventing a broad app audit.
@@ -1256,7 +1255,7 @@ This PR does not touch a path that the browser explorer can map to app UI/runtim
 
 - None from this PR diff. Add deterministic checks when a future PR changes app/runtime behavior.
 REPORT
-  echo "No app/runtime surface touched; wrote inconclusive advisory report to $artifacts/expect.log"
+  echo "No app/runtime surface touched; wrote inconclusive advisory report to $agent_report_file"
   record_playwright_artifacts || true
   publish_trace_artifacts_to_r2 || true
   write_agent_report_artifact
