@@ -1205,6 +1205,50 @@ process.exit(1);
     );
   });
 
+  it('suppresses Antigravity auth stdout and emits AGENT_AUTH_REQUIRED without an event: stdout delta', async () => {
+    await withFakeAgent(
+      'agy',
+      `
+const args = process.argv.slice(2);
+if (args[0] === '--version') {
+  console.log('1.107.0-test');
+  process.exit(0);
+}
+// Simulate agy chat - printing the OAuth prompt and exiting 0
+process.stdout.write('Authentication required. Please visit the URL to log in: https://accounts.google.com/o/oauth2/auth?client_id=12345&redirect_uri=antigravity-redirect\\n');
+process.stdout.write('Waiting for authentication (timeout 30s)...\\n');
+process.stdout.write('Error: authentication timed out.\\n');
+process.exit(0);
+`,
+      async () => {
+        const createResponse = await fetch(`${baseUrl}/api/runs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: 'antigravity',
+            message: 'hello',
+          }),
+        });
+        expect(createResponse.status).toBe(202);
+        const { runId } = await createResponse.json() as { runId: string };
+
+        const eventsController = new AbortController();
+        const eventsResponse = await fetch(`${baseUrl}/api/runs/${runId}/events`, {
+          signal: eventsController.signal,
+        });
+        const eventsBody = await readSseUntil(eventsResponse, 'AGENT_AUTH_REQUIRED');
+        eventsController.abort();
+        const statusBody = await waitForRunStatus(baseUrl, runId);
+
+        expect(eventsBody).toContain('event: error');
+        expect(eventsBody).toContain('AGENT_AUTH_REQUIRED');
+        expect(eventsBody).not.toContain('event: stdout');
+        expect(eventsBody).not.toContain('accounts.google.com');
+        expect(statusBody.status).toBe('failed');
+      },
+    );
+  });
+
   it('surfaces Qoder assistant error records through the SSE error channel', async () => {
     const qoderErrorLine = JSON.stringify({
       type: 'assistant',

@@ -11754,6 +11754,12 @@ export async function startServer({
     // plain streams (most other CLIs) we forward raw chunks unchanged so
     // the browser can append them to the assistant's text buffer.
     let agentStreamError = null;
+    // Holds buffered plain-text stdout chunks for agents (currently
+    // antigravity) where we need to inspect the full output at close
+    // time before deciding whether to forward it. The auth-prompt guard
+    // in the close handler suppresses the buffer when the output is an
+    // OAuth prompt; otherwise the flush below sends the chunks in order.
+    const plaintextStdoutBuffer: string[] = [];
     // Tracks whether any stream the run is using actually emitted user-
     // visible content. Only the streams routed through `sendAgentEvent`
     // contribute to this flag; ACP sessions and plain stdout streams are
@@ -11974,6 +11980,16 @@ export async function startServer({
       );
       child.stdout.on('data', (chunk) => handler.feed(chunk));
       child.on('close', () => handler.flush());
+    } else if (def.id === 'antigravity') {
+      // Buffer stdout until close so the auth-prompt guard can suppress
+      // the OAuth URL before forwarding it to the client as assistant
+      // text. agy exits 0 after printing the auth URL on stdout, so the
+      // chunks would otherwise arrive before the close-time classifier
+      // detects them as an auth prompt.
+      child.stdout.on('data', (chunk) => {
+        noteAgentActivity();
+        plaintextStdoutBuffer.push(String(chunk));
+      });
     } else {
       child.stdout.on('data', (chunk) => {
         noteAgentActivity();
@@ -12225,6 +12241,13 @@ export async function startServer({
             }
           } catch { /* project-level best-effort */ }
         })();
+      }
+      // Flush buffered plain-text stdout (antigravity) that was not
+      // suppressed by the auth-prompt guard above. Send each chunk in
+      // order before finishing so the assistant text arrives before the
+      // run's `finished` event.
+      for (const chunk of plaintextStdoutBuffer) {
+        send('stdout', { chunk });
       }
       design.runs.finish(run, status, code, signal);
       } finally {
