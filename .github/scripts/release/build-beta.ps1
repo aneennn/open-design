@@ -79,7 +79,7 @@ git lfs version
 & $cargo --version
 & $makensis /VERSION
 
-git fetch --tags --force origin
+git fetch --tags --force --depth=1 origin
 
 if ([string]::IsNullOrWhiteSpace($ReleaseVersion)) {
   $previousMetadataUrl = $env:OPEN_DESIGN_BETA_METADATA_URL

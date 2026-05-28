@@ -33,8 +33,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
         with:
-          fetch-depth: 0
-          lfs: true
+          clean: false
+          fetch-depth: 1
+          lfs: false
 
       - name: Build beta candidate
         shell: cmd
