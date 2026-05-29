@@ -1,4 +1,5 @@
 import type http from 'node:http';
+import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import {
   chmodSync,
@@ -27,6 +28,7 @@ import {
 import { skillCwdAliasSegment } from '../src/cwd-aliases.js';
 import { getAgentDef } from '../src/agents.js';
 import { readMemoryConfig, writeMemoryConfig } from '../src/memory.js';
+import { upsertMessage } from '../src/db.js';
 import { renderCodexImagegenOverride } from '../src/prompts/system.js';
 
 const FAKE_VELA_FIXTURE = resolve(process.cwd(), 'tests', 'fixtures', 'fake-vela.mjs');
@@ -214,6 +216,87 @@ process.exit(0);
         });
       },
     );
+  });
+
+
+  it('reuses an existing assistant message row instead of creating a duplicate when assistantMessageId is supplied', async () => {
+    if (!process.env.OD_DATA_DIR) {
+      throw new Error('OD_DATA_DIR is required for assistant message reuse tests');
+    }
+    const projectId = `proj-${randomUUID()}`;
+    const assistantMessageId = `assistant-${randomUUID()}`;
+
+    const createProjectResponse = await fetch(`${baseUrl}/api/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: projectId, name: 'Assistant row reuse fixture' }),
+    });
+    expect(createProjectResponse.ok).toBe(true);
+
+    const conversationsResponse = await fetch(`${baseUrl}/api/projects/${projectId}/conversations`);
+    expect(conversationsResponse.ok).toBe(true);
+    const conversationsBody = await conversationsResponse.json() as {
+      conversations: Array<{ id: string }>;
+    };
+    const conversationId = conversationsBody.conversations[0]?.id;
+    expect(conversationId).toBeTruthy();
+
+    const dbFile = resolve(process.env.OD_DATA_DIR, 'app.sqlite');
+    const sqlite = new Database(dbFile);
+    try {
+      upsertMessage(sqlite as never, conversationId!, {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        runStatus: 'failed',
+        startedAt: Date.now() - 1_000,
+        endedAt: Date.now() - 500,
+      });
+    } finally {
+      sqlite.close();
+    }
+
+    await withFakeAgent(
+      'opencode',
+      `
+process.stdin.resume();
+process.stdin.on('end', () => {
+  console.log(JSON.stringify({ type: 'step_start' }));
+  console.log(JSON.stringify({ type: 'text', part: { text: 'reused-assistant-row-ok' } }));
+  console.log(JSON.stringify({ type: 'step_finish', part: { tokens: { input: 1, output: 1 } } }));
+  process.exit(0);
+});
+`,
+      async () => {
+        const response = await fetch(`${baseUrl}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: 'opencode',
+            projectId,
+            conversationId,
+            assistantMessageId,
+            message: 'retry this turn',
+          }),
+        });
+        const body = await response.text();
+        expect(response.ok).toBe(true);
+        expect(body).toContain('reused-assistant-row-ok');
+      },
+    );
+
+    const verifyDb = new Database(dbFile, { readonly: true });
+    try {
+      const rows = verifyDb
+        .prepare(`SELECT id, content, run_id FROM messages WHERE conversation_id = ? AND role = 'assistant'`)
+        .all(conversationId) as Array<{ id: string; content: string; run_id: string | null }>;
+      expect(rows.filter((row) => row.id === assistantMessageId)).toHaveLength(1);
+      expect(rows.some((row) => row.id !== assistantMessageId && row.content.includes('reused-assistant-row-ok'))).toBe(false);
+      const reused = rows.find((row) => row.id === assistantMessageId);
+      expect(reused?.content).toContain('reused-assistant-row-ok');
+    } finally {
+      verifyDb.close();
+    }
   });
 
   it('rewrites the OpenCode scanner overflow into a generic retry message', async () => {
