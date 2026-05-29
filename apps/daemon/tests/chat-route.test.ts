@@ -281,6 +281,78 @@ child.on('exit', (code, signal) => {
     }
   });
 
+  it('does not report plugin authoring as succeeded when the agent only emits planning text without artifacts', async () => {
+    const projectId = `proj-plugin-authoring-${randomUUID()}`;
+
+    const createProjectResponse = await fetch(`${baseUrl}/api/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: projectId,
+        name: 'Plugin authoring completion fixture',
+        skillId: null,
+        designSystemId: null,
+      }),
+    });
+    expect(createProjectResponse.status).toBe(200);
+    const conversationsResponse = await fetch(`${baseUrl}/api/projects/${projectId}/conversations`);
+    expect(conversationsResponse.status).toBe(200);
+    const conversationsBody = await conversationsResponse.json() as {
+      conversations: Array<{ id: string }>;
+    };
+    const conversationId = conversationsBody.conversations[0]?.id;
+    expect(conversationId).toBeTruthy();
+
+    await withFakeAgent(
+      'opencode',
+      `
+process.stdin.resume();
+process.stdin.on('end', () => {
+  console.log(JSON.stringify({ type: 'step_start' }));
+  console.log(JSON.stringify({ type: 'text', part: { text: '我来帮你创建一个通用的 Open Design 插件脚手架。先读取文档规范，再生成插件文件。' } }));
+  console.log(JSON.stringify({ type: 'step_finish', part: { tokens: { input: 1, output: 1 } } }));
+  process.exit(0);
+});
+`,
+      async () => {
+        const createResponse = await fetch(`${baseUrl}/api/runs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: 'opencode',
+            projectId,
+            conversationId,
+            pluginId: 'od-plugin-authoring',
+            message: '请创建一个可刷新、可审计、由 API 驱动的 Open Design 插件脚手架。',
+          }),
+        });
+        expect(createResponse.status).toBe(202);
+        const {
+          runId,
+          pluginId,
+          appliedPluginSnapshotId,
+        } = await createResponse.json() as {
+          runId: string;
+          pluginId: string | null;
+          appliedPluginSnapshotId: string | null;
+        };
+        expect(pluginId).toBe('od-plugin-authoring');
+        expect(appliedPluginSnapshotId).toBeTruthy();
+
+        const eventsResponse = await fetch(`${baseUrl}/api/runs/${runId}/events`);
+        const eventsBody = await readSseUntil(eventsResponse, 'event: final');
+        const statusBody = await waitForRunStatus(baseUrl, runId);
+
+        expect(eventsBody).toContain('先读取文档规范，再生成插件文件');
+        expect(statusBody.status).not.toBe('succeeded');
+
+        const filesResponse = await fetch(`${baseUrl}/api/projects/${projectId}/files`);
+        expect(filesResponse.status).toBe(200);
+        const filesBody = await filesResponse.json() as { files: Array<{ name: string }> };
+        expect(filesBody.files.some((file) => file.name.startsWith('generated-plugin/'))).toBe(false);
+      },
+    );
+  });
   it('closes the # Instructions block with an explicit "do not echo" guard so models do not parrot the prompt back', async () => {
     // claude-opus-4-7 (and a few other instruction-tuned models) start
     // their reply by echoing the # Instructions block verbatim, which

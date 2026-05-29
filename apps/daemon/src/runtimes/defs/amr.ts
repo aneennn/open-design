@@ -47,6 +47,7 @@ export function normalizeVelaModelId(rawId: string): string | null {
     : withoutProvider;
   if (!withoutPrefix) return null;
   if (/^deepseek_v3_2$/i.test(withoutPrefix)) return 'deepseek-v3.2';
+  if (/^deepseek-v3-2$/i.test(withoutPrefix)) return 'deepseek-v3.2';
   if (/^kimi_k2_6$/i.test(withoutPrefix)) return 'kimi-k2.6';
   if (/^glm_5_1$/i.test(withoutPrefix)) return 'glm-5.1';
   if (/^glm_5$/i.test(withoutPrefix)) return 'glm-5';

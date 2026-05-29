@@ -2096,6 +2096,33 @@ function reconcileAssistantMessageOnRunEnd(db, runs, run) {
     });
 }
 
+
+function isPluginAuthoringRun(db, run) {
+  if (run?.pluginId === 'od-plugin-authoring') return true;
+  if (
+    typeof run?.appliedPluginSnapshotId === 'string'
+    && run.appliedPluginSnapshotId.length > 0
+  ) {
+    const snapshot = getSnapshot(db, run.appliedPluginSnapshotId);
+    return snapshot?.pluginId === 'od-plugin-authoring';
+  }
+  return false;
+}
+
+async function hasGeneratedPluginArtifacts(projectRoot) {
+  if (!projectRoot || typeof projectRoot !== 'string') return false;
+  const required = [
+    path.join(projectRoot, 'generated-plugin', 'open-design.json'),
+    path.join(projectRoot, 'generated-plugin', 'SKILL.md'),
+  ];
+  try {
+    await Promise.all(required.map((file) => fs.promises.access(file, fs.constants.F_OK)));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function detectSkillPluginCandidateOnRunSuccess(db, runs, run, input, projectRoot) {
   if (!run.projectId || !run.conversationId) return;
   void runs
@@ -12065,6 +12092,19 @@ export async function startServer({
         ));
         return design.runs.finish(run, 'failed', code, signal);
       }
+      if (
+        code === 0 &&
+        !run.cancelRequested &&
+        isPluginAuthoringRun(db, run) &&
+        !(await hasGeneratedPluginArtifacts(cwd))
+      ) {
+        send('error', createSseErrorPayload(
+          'AGENT_EXECUTION_FAILED',
+          'Plugin authoring ended before generating the required generated-plugin artifacts.',
+          { retryable: true },
+        ));
+        return design.runs.finish(run, 'failed', code, signal);
+      }
       // Plain-stream auth-failure guard: plain adapters (today
       // antigravity, deepseek's TUI variants) may exit cleanly with
       // visible stdout that's actually an auth prompt — agy prints
@@ -13392,7 +13432,8 @@ export async function startServer({
     };
     let server;
     try {
-      server = app.listen(port, host, () => {
+      server = app.listen(port, host);
+      server.once('listening', () => {
         // Widen the between-request idle window so kept-alive sockets
         // belonging to chat/SSE clients survive the gaps between bursts.
         //
@@ -13415,10 +13456,8 @@ export async function startServer({
         //
         // `headersTimeout` must exceed `keepAliveTimeout` per the Node
         // docs; otherwise a slow-loris client can stall request parsing.
-        if (server) {
-          server.keepAliveTimeout = 120_000;
-          server.headersTimeout = 125_000;
-        }
+        server.keepAliveTimeout = 120_000;
+        server.headersTimeout = 125_000;
         const address = server.address();
         // `address()` can in theory return `string | AddressInfo | null`. For
         // a TCP listener it's always `AddressInfo` with a `.port` — the guard
