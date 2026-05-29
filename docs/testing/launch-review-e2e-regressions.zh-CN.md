@@ -151,6 +151,32 @@
 2. `filters user design systems by draft and published status in the manager`
 3. `deleting the active design system falls back to another user system`
 
+### 10. main 最新功能回归补测
+
+文件：
+- [e2e/ui/project-management-flows.test.ts](/Users/mac/open-design/open-design-amr-runtime-acp/e2e/ui/project-management-flows.test.ts)
+- [e2e/ui/amr-onboarding.test.ts](/Users/mac/open-design/open-design-amr-runtime-acp/e2e/ui/amr-onboarding.test.ts)
+- [e2e/ui/app-manual-edit.test.ts](/Users/mac/open-design/open-design-amr-runtime-acp/e2e/ui/app-manual-edit.test.ts)
+- [e2e/ui/settings-api-protocol.test.ts](/Users/mac/open-design/open-design-amr-runtime-acp/e2e/ui/settings-api-protocol.test.ts)
+
+新增用例：
+
+1. `projects empty state create action opens the new project flow`
+   - 覆盖空项目页 CTA 能正确拉起创建流程
+
+2. `project header keeps the settings, handoff, and avatar controls pinned on compact desktop widths`
+   - 覆盖紧凑桌面宽度下项目头部右侧控制区不被挤掉
+
+3. `onboarding AMR card lets the user pick a live runtime model before continuing`
+   - 覆盖 onboarding 场景下 AMR 运行时卡片、模型选择与持久化
+
+4. `simple deck keeps the active slide stable across preview mode switches`
+   - 覆盖 Simple Deck 在 Preview / Code 切换后的导航状态稳定性
+
+5. `BYOK fetched models are searchable inside the Settings model dropdown`
+   - 覆盖大模型目录下 BYOK 模型下拉内搜索
+   - 直接锁住 #3262 的高风险交互面
+
 ## 当前覆盖对应的产品结论
 
 这批用例重点拦住的是下面这些历史高频回归：
@@ -212,6 +238,25 @@ pnpm exec playwright test -c playwright.config.ts ui/diagnostics-export.test.ts
 
 ```bash
 pnpm exec playwright test -c playwright.config.ts ui/automations-page.test.ts --grep "places a newly created automation at the top of the list and highlights it|keeps saved automations ordered by newest createdAt first|renders the routine target and last-run status in the row summary"
+```
+
+
+### main 最新功能回归补测
+
+```bash
+pnpm exec playwright test -c playwright.config.ts ui/project-management-flows.test.ts --grep "projects empty state create action opens the new project flow|project header keeps the settings, handoff, and avatar controls pinned on compact desktop widths"
+```
+
+```bash
+pnpm exec playwright test -c playwright.config.ts ui/amr-onboarding.test.ts --grep "onboarding AMR card lets the user pick a live runtime model before continuing"
+```
+
+```bash
+pnpm exec playwright test -c playwright.config.ts ui/app-manual-edit.test.ts --grep "simple deck keeps the active slide stable across preview mode switches"
+```
+
+```bash
+pnpm exec playwright test -c playwright.config.ts ui/settings-api-protocol.test.ts --grep "BYOK fetched models are searchable inside the Settings model dropdown"
 ```
 
 ### Connectors：happy path + recovery

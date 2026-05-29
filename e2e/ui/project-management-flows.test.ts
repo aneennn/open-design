@@ -140,6 +140,34 @@ test('new project tabs switch visible form sections and preserve drafts', async 
   await expect(page.getByText('Aspect', { exact: true })).toBeVisible();
 });
 
+test('projects empty state create action opens the new project flow', async ({ page }) => {
+  await page.route('**/api/skills', async (route) => {
+    await route.fulfill({ json: { skills: TAB_SKILLS } });
+  });
+  await page.route('**/api/connectors', async (route) => {
+    await route.fulfill({ json: { connectors: [] } });
+  });
+  await page.route('**/api/connectors/status', async (route) => {
+    await route.fulfill({ json: { statuses: {} } });
+  });
+  await page.route('**/api/projects', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: { projects: [] } });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.goto('/projects');
+  await expect(page.locator('.designs-empty-state')).toBeVisible();
+  await page.locator('.designs-empty-cta').click();
+
+  await expect(page.getByTestId('new-project-modal')).toBeVisible();
+  await expect(page.getByTestId('new-project-panel')).toBeVisible();
+  await expect(page.getByTestId('new-project-tab-prototype')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('.newproj-title')).toContainText('New prototype');
+});
+
 test('design system multi-select stores primary and inspiration metadata', async ({ page }) => {
   await page.route('**/api/design-systems', async (route) => {
     await route.fulfill({ json: { designSystems: DESIGN_SYSTEMS } });
@@ -232,6 +260,40 @@ test('project title rename persists after reload and ignores blank titles', asyn
 
   const project = await fetchCurrentProject(page);
   expect(project.name).toBe('Renamed persistent title');
+});
+
+
+test('project header keeps the settings, handoff, and avatar controls pinned on compact desktop widths', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await page.goto('/');
+  await createProject(page, 'Header controls stay pinned');
+  await expectWorkspaceReady(page);
+
+  const handoffTrigger = page.getByTestId('handoff-trigger');
+  const avatarTrigger = page.locator('.avatar-agent-trigger');
+  await expect(page.getByTestId('project-title')).toBeVisible();
+  await expect(handoffTrigger).toBeVisible();
+  await expect(avatarTrigger).toBeVisible();
+
+  const layout = await page.evaluate(() => {
+    const root = document.documentElement;
+    const handoff = document.querySelector('[data-testid="handoff-trigger"]') as HTMLElement | null;
+    const avatar = document.querySelector('.avatar-agent-trigger') as HTMLElement | null;
+    const title = document.querySelector('[data-testid="project-title"]') as HTMLElement | null;
+    const overflow = Math.max(0, root.scrollWidth - root.clientWidth);
+    return {
+      overflow,
+      handoffRight: handoff?.getBoundingClientRect().right ?? 0,
+      avatarRight: avatar?.getBoundingClientRect().right ?? 0,
+      titleRight: title?.getBoundingClientRect().right ?? 0,
+      viewportWidth: window.innerWidth,
+    };
+  });
+
+  expect(layout.overflow).toBeLessThanOrEqual(2);
+  expect(layout.handoffRight).toBeGreaterThan(layout.titleRight);
+  expect(layout.avatarRight).toBeGreaterThan(layout.handoffRight);
+  expect(layout.avatarRight).toBeLessThanOrEqual(layout.viewportWidth - 8);
 });
 
 test('canceling design file deletion keeps the file and open tab', async ({ page }) => {
