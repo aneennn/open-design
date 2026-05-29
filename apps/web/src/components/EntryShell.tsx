@@ -621,7 +621,7 @@ export function EntryShell({
               view === 'home' ? '' : ' entry-main__inner--wide'
             }`}
           >
-            {view === 'home' ? (
+            <div style={view === 'home' ? undefined : { display: 'none' }}>
               <HomeView
                 projects={projects}
                 projectsLoading={projectsLoading}
@@ -640,7 +640,7 @@ export function EntryShell({
                 connectors={connectors}
                 promptTemplates={promptTemplates}
               />
-            ) : null}
+            </div>
             <div style={view === 'projects' ? undefined : { display: 'none' }}>
               {projectsLoading || skillsLoading || designSystemsLoading ? (
                 <CenteredLoader label={t('common.loading')} />
