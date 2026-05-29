@@ -1,17 +1,9 @@
 > [!IMPORTANT]
-> ### 🔥 Open Design 0.8.0 已发布。设计的旧世界到此为止，一起构建新世界。
+> ### 🔥 Open Design 0.8.0 已发布
 >
-> 一个文件夹即可将任何内容——**[插件](plugins/)**、**[技能](skills/)**、**[设计系统](design-systems/)**——升级为可复用、可被 Agent 执行的工件。全新技能注册中心、焕新的 `DESIGN.md` 设计系统、品牌级模板，以及 `0.7.x` 项目的平滑升级路径。
+> 全新插件市场基础设施上线，400+ 官方插件开箱即用。支持设计方案交付、Figma 迁移、代码库品牌刷新、媒体批量生成等场景。欢迎社区贡献插件——详见 [插件规范](plugins/spec/SPEC.md)。
 >
-> **🧩 招募插件作者。** 0.8.0 落地了[插件市场基础设施](plugins/spec/SPEC.md)，涵盖 **400+ 官方插件**，分布在 [场景](plugins/_official/scenarios/)、[图片模板](plugins/_official/image-templates/)、[视频模板](plugins/_official/video-templates/)、[原子组件](plugins/_official/atoms/)、[设计系统](plugins/_official/design-systems/) 和 [示例](plugins/_official/examples/)。一个插件可以：
->   - 🎨 交付一份**完整设计方案**（落地页、路演 Deck、OKR 记分卡）——参见 [`od-default`](plugins/_official/scenarios/od-default/) · [`od-design-refine`](plugins/_official/scenarios/od-design-refine/) · [`od-new-generation`](plugins/_official/scenarios/od-new-generation/)。
->   - 🔁 **迁移 Figma / Pencil → React / Next / Vue**——参见 [`od-figma-migration`](plugins/_official/scenarios/od-figma-migration/) · [`od-react-export`](plugins/_official/scenarios/od-react-export/) · [`od-nextjs-export`](plugins/_official/scenarios/od-nextjs-export/)。
->   - 🛠️ **将现有代码库刷新到品牌规范**——指向 git 仓库 + `DESIGN.md`，获得一个 PR。参见 [`od-code-migration`](plugins/_official/scenarios/od-code-migration/)。
->   - 🎬 **生成媒体**——通过 [`od-media-generation`](plugins/_official/scenarios/od-media-generation/) 批量生成图片 / 视频 / 音频。
->
-> **创建你的插件** → 规范：[`plugins/spec/SPEC.md`](plugins/spec/SPEC.md) · Agent 开发指南：[`plugins/spec/AGENT-DEVELOPMENT.md`](plugins/spec/AGENT-DEVELOPMENT.md) · 贡献指南：[`plugins/spec/CONTRIBUTING.md`](plugins/spec/CONTRIBUTING.md)。将文件夹放到 [`plugins/_official/`](plugins/_official/) 或 [`plugins/community/`](plugins/community/)，提交 PR——你的插件将随下一次发布上线。
->
-> → [**阅读公告和更新日志**](https://github.com/nexu-io/open-design/discussions/1727) · [**0.8.0 版本**](https://github.com/nexu-io/open-design/releases) · 可与你现有的 `0.7` 版本并行运行。
+> → [**更新日志**](https://github.com/nexu-io/open-design/discussions/1727) · [**0.8.0 Release**](https://github.com/nexu-io/open-design/releases)
 
 <p align="center">
   <img src="docs/assets/banner-zh.png" alt="Open Design — The open-source Claude Design alternative · 129 Design Systems · 116 Plugins · 16 Coding Agents · 14 Media Providers" width="100%" />
