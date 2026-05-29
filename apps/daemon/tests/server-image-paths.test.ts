@@ -57,3 +57,21 @@ test('resolveSafePromptImagePaths keeps images at or below 1 MB', () => {
   expect(result.safeImages).toEqual(['/tmp/od-uploads/exactly-1mb.png']);
   expect(result.oversizedImages).toEqual([]);
 });
+
+test('resolveSafePromptImagePaths surfaces stat failures instead of dropping the image', () => {
+  const result = resolveSafePromptImagePaths(['/tmp/od-uploads/unreadable.png'], {
+    uploadDir: '/tmp/od-uploads',
+    existsSync: () => true,
+    statSync: () => {
+      throw Object.assign(new Error('EACCES: permission denied'), {
+        code: 'EACCES',
+      });
+    },
+  });
+
+  expect(result.safeImages).toEqual([]);
+  expect(result.oversizedImages).toEqual([]);
+  expect(result.failedImages).toEqual([
+    { path: '/tmp/od-uploads/unreadable.png', error: 'EACCES: permission denied' },
+  ]);
+});

@@ -1051,7 +1051,7 @@ export function resolveSafeProjectAttachments(cwd, attachments, opts = {}) {
 
 export function resolveSafePromptImagePaths(imagePaths, opts = {}) {
   if (!Array.isArray(imagePaths) || imagePaths.length === 0) {
-    return { safeImages: [], oversizedImages: [] };
+    return { safeImages: [], oversizedImages: [], failedImages: [] };
   }
   const pathImpl = opts.pathImpl ?? path;
   const existsSync = opts.existsSync ?? fs.existsSync;
@@ -1062,25 +1062,41 @@ export function resolveSafePromptImagePaths(imagePaths, opts = {}) {
     : MAX_CHAT_IMAGE_BYTES;
   const safeImages = [];
   const oversizedImages = [];
+  const failedImages = [];
 
   for (const inputPath of imagePaths) {
     if (typeof inputPath !== 'string' || inputPath.length === 0) continue;
+    let resolved;
     try {
-      const resolved = pathImpl.resolve(inputPath);
-      if (!isPathWithin(uploadDir, resolved) || !existsSync(resolved)) continue;
-      const stat = statSync(resolved);
-      if (!stat.isFile()) continue;
-      if (typeof stat.size === 'number' && stat.size > maxBytes) {
-        oversizedImages.push({ path: inputPath, sizeBytes: stat.size });
-        continue;
-      }
-      safeImages.push(inputPath);
+      resolved = pathImpl.resolve(inputPath);
     } catch {
-      // Drop malformed paths; prompt images are advisory context.
+      // Drop malformed path input; we cannot even resolve it to a location.
+      continue;
     }
+    if (!isPathWithin(uploadDir, resolved) || !existsSync(resolved)) continue;
+    // Past the within-UPLOAD_DIR + existence gate the path points at a real
+    // upload. A statSync failure here (EACCES/EPERM, a file that vanished
+    // mid-run) is an infrastructure error, not bad input — surface it so the
+    // run fails loudly instead of silently dropping required prompt context.
+    let stat;
+    try {
+      stat = statSync(resolved);
+    } catch (err) {
+      failedImages.push({
+        path: inputPath,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      continue;
+    }
+    if (!stat.isFile()) continue;
+    if (typeof stat.size === 'number' && stat.size > maxBytes) {
+      oversizedImages.push({ path: inputPath, sizeBytes: stat.size });
+      continue;
+    }
+    safeImages.push(inputPath);
   }
 
-  return { safeImages, oversizedImages };
+  return { safeImages, oversizedImages, failedImages };
 }
 
 function resolveProcessResourcesPath() {
@@ -10512,12 +10528,20 @@ export async function startServer({
 
     // Sanitise supplied image paths: must live under UPLOAD_DIR and stay
     // below the prompt-image safety cap.
-    const { safeImages, oversizedImages } = resolveSafePromptImagePaths(imagePaths);
+    const { safeImages, oversizedImages, failedImages } =
+      resolveSafePromptImagePaths(imagePaths);
     if (oversizedImages.length > 0) {
       return design.runs.fail(
         run,
         'BAD_REQUEST',
         'Image attachments must be 1 MB or smaller.',
+      );
+    }
+    if (failedImages.length > 0) {
+      return design.runs.fail(
+        run,
+        'INTERNAL_ERROR',
+        'Failed to read one or more image attachments.',
       );
     }
     const amrStagedImages =
