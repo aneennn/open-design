@@ -6594,12 +6594,13 @@ const [manualEditTargets, setManualEditTargets] = useState<ManualEditTarget[]>([
       : shareLinkFeedback === 'failed'
         ? t('useEverywhere.copyFailed')
         : t('fileViewer.copyShareLink');
+  const deployMenuLabel = t('fileViewer.deployModalTitle') || 'Deploy';
   const deployButtonLabel =
     deployPhase === 'deploying'
       ? t('fileViewer.deployingToProvider', { provider: deployProviderLabel })
       : deployPhase === 'preparing-link'
         ? t('fileViewer.preparingPublicLink')
-        : t('fileViewer.deployModalTitle');
+        : deployMenuLabel;
   const copyDeployLabel = (url: string) =>
     copiedDeployLink === url.trim()
       ? t('fileViewer.copied')
@@ -7035,10 +7036,11 @@ const [manualEditTargets, setManualEditTargets] = useState<ManualEditTarget[]>([
                   className="chrome-action chrome-action-secondary chrome-action-with-label"
                   aria-haspopup="menu"
                   aria-expanded={deployMenuOpen}
+                  aria-label={deployMenuLabel}
                   onClick={openDeployMenu}
                 >
                   <RemixIcon name="upload-cloud-line" size={15} />
-                  <span>{t('fileViewer.deployModalTitle')}</span>
+                  <span>{deployMenuLabel}</span>
                 </button>
                 {deployMenuOpen ? (
                   <div className="share-menu-popover" role="menu">
