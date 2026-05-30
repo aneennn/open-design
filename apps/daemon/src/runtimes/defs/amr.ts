@@ -196,6 +196,11 @@ export const amrAgentDef = {
   fallbackModels: [] as RuntimeModelOption[],
   buildArgs: () => ['agent', 'run', '--runtime', 'opencode'],
   streamFormat: 'acp-json-rpc',
+  // Vela routes model selection through ACP's `session/set_model` and only
+  // accepts ids that survived the `vela models` preflight check, so a
+  // free-text "Custom" id silently fails at spawn. The model picker
+  // surfaces the live Vela catalog instead.
+  supportsCustomModel: false,
   supportsImagePaths: true,
   // Daemon-process env override for emergency operator pinning. Normal UI
   // selection comes from the live `vela models` catalog and is preflighted
