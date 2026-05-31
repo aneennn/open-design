@@ -536,6 +536,20 @@ export async function generateMedia(args: {
       bytes = result.bytes;
       providerNote = result.providerNote;
       suggestedExt = result.suggestedExt;
+    } else if (def.provider === 'a2e' && surface === 'video') {
+      const result = await renderA2EVideo(ctx, credentials, args.onProgress);
+      bytes = result.bytes;
+      providerNote = result.providerNote;
+      suggestedExt = result.suggestedExt;
+    } else if (
+      def.provider === 'a2e'
+      && surface === 'audio'
+      && ctx.audioKind === 'speech'
+    ) {
+      const result = await renderA2ETTS(ctx, credentials);
+      bytes = result.bytes;
+      providerNote = result.providerNote;
+      suggestedExt = result.suggestedExt;
     } else if (
       def.provider === 'elevenlabs'
       && surface === 'audio'
@@ -2980,6 +2994,269 @@ function runHyperFramesRender(compAbs: string, tmpOutput: string, onProgress?: P
       reject(err);
     });
   });
+}
+
+// ---------------------------------------------------------------------------
+// Provider: A2E — Text-to-Speech & Avatar Video (asynchronous).
+//
+// Docs: https://video.a2e.ai/dev
+//   * TTS: POST /api/v1/video/send_tts returns `{ code: 0, data: "URL" }`.
+//     We download the generated audio file content as bytes.
+//   * Video: POST /api/v1/video/generate returns `{ code: 0, data: { _id: "..." } }`.
+//     Since the video generation is asynchronous, we poll the list endpoint
+//     `POST /api/v1/video/list` with body `{}` to locate the matching task _id.
+//     Once the task status changes to `success`, we download the video file
+//     from the returned `result` URL.
+// ---------------------------------------------------------------------------
+
+async function renderA2ETTS(ctx: MediaContext, credentials: ProviderConfig): Promise<RenderResult> {
+  if (!credentials.apiKey) {
+    throw new Error('no A2E API key — configure it in Settings or set OD_A2E_API_KEY');
+  }
+  const baseUrl = (credentials.baseUrl || 'https://video.a2e.ai').replace(/\/$/, '');
+
+  const text = (ctx.prompt && ctx.prompt.trim()) || 'This is a test.';
+  const voiceId = (ctx.voice && ctx.voice.trim()) || '66dc3c1b7dc1f1c483cc5ab8';
+
+  const body: Record<string, any> = {
+    msg: text,
+    speechRate: 1.0,
+  };
+
+  if (/^[a-fA-F0-9]{24}$/.test(voiceId)) {
+    body.tts_id = voiceId;
+  } else {
+    body.user_voice_id = voiceId;
+    body.country = ctx.language || 'en';
+    body.region = 'US';
+  }
+
+  const resp = await fetch(`${baseUrl}/api/v1/video/send_tts`, withMediaRequestInit(ctx, {
+    method: 'POST',
+    headers: {
+      'authorization': `Bearer ${credentials.apiKey}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  }));
+
+  const respText = await resp.text();
+  if (!resp.ok) {
+    throw new Error(`A2E tts error ${resp.status}: ${truncate(respText, 240)}`);
+  }
+
+  let data: any;
+  try {
+    data = JSON.parse(respText);
+  } catch {
+    throw new Error(`A2E tts non-JSON: ${truncate(respText, 200)}`);
+  }
+
+  if (data?.code !== 0) {
+    throw new Error(`A2E tts API error ${data?.code || 'unknown'}: ${data?.msg || 'unknown error'}`);
+  }
+
+  const audioUrl = data?.data;
+  if (typeof audioUrl !== 'string' || !audioUrl) {
+    throw new Error('A2E tts response missing data (audio URL)');
+  }
+
+  const urlCheck = await assertExternalAssetUrl(audioUrl);
+  if (!urlCheck.ok) {
+    throw new Error(`A2E tts asset security check: ${urlCheck.error}`);
+  }
+
+  const audioResp = await fetch(audioUrl, withMediaRequestInit(ctx, { redirect: 'error' }));
+  if (!audioResp.ok) {
+    throw new Error(`A2E tts audio download ${audioResp.status}`);
+  }
+
+  const bytes = Buffer.from(await audioResp.arrayBuffer());
+  if (bytes.length === 0) {
+    throw new Error('A2E tts audio file is empty');
+  }
+
+  return {
+    bytes,
+    providerNote: `a2e/${ctx.wireModel} · voice=${voiceId} · ${bytes.length} bytes`,
+    suggestedExt: '.wav',
+  };
+}
+
+async function renderA2EVideo(ctx: MediaContext, credentials: ProviderConfig, onProgress?: ProgressFn): Promise<RenderResult> {
+  if (!credentials.apiKey) {
+    throw new Error('no A2E API key — configure it in Settings or set OD_A2E_API_KEY');
+  }
+  const baseUrl = (credentials.baseUrl || 'https://video.a2e.ai').replace(/\/$/, '');
+
+  const anchorId = (ctx.voice && ctx.voice.trim()) || '507f1f77bcf86cd799439011';
+
+  // Step 1: Generate TTS Audio first using the prompt
+  if (onProgress) onProgress('Converting text prompt to speech via A2E TTS...');
+  const ttsBody = {
+    msg: ctx.prompt || 'A short cinematic clip.',
+    speechRate: 1.0,
+    tts_id: '66dc3c1b7dc1f1c483cc5ab8',
+  };
+
+  const ttsResp = await fetch(`${baseUrl}/api/v1/video/send_tts`, withMediaRequestInit(ctx, {
+    method: 'POST',
+    headers: {
+      'authorization': `Bearer ${credentials.apiKey}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(ttsBody),
+  }));
+
+  const ttsText = await ttsResp.text();
+  if (!ttsResp.ok) {
+    throw new Error(`A2E video tts prep error ${ttsResp.status}: ${truncate(ttsText, 240)}`);
+  }
+
+  let ttsData: any;
+  try {
+    ttsData = JSON.parse(ttsText);
+  } catch {
+    throw new Error(`A2E video tts prep non-JSON: ${truncate(ttsText, 200)}`);
+  }
+
+  if (ttsData?.code !== 0) {
+    throw new Error(`A2E video tts prep API error ${ttsData?.code || 'unknown'}: ${ttsData?.msg || 'unknown error'}`);
+  }
+
+  const audioUrl = ttsData?.data;
+  if (typeof audioUrl !== 'string' || !audioUrl) {
+    throw new Error('A2E video prep missing audio URL');
+  }
+
+  // Step 2: Submit avatar video generation task using generated audio URL
+  if (onProgress) onProgress('Submitting video generation task to A2E...');
+  const generateBody = {
+    anchor_id: anchorId,
+    anchor_type: 0,
+    audioSrc: audioUrl,
+  };
+
+  const generateResp = await fetch(`${baseUrl}/api/v1/video/generate`, withMediaRequestInit(ctx, {
+    method: 'POST',
+    headers: {
+      'authorization': `Bearer ${credentials.apiKey}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(generateBody),
+  }));
+
+  const generateText = await generateResp.text();
+  if (!generateResp.ok) {
+    throw new Error(`A2E video submit error ${generateResp.status}: ${truncate(generateText, 240)}`);
+  }
+
+  let generateData: any;
+  try {
+    generateData = JSON.parse(generateText);
+  } catch {
+    throw new Error(`A2E video submit non-JSON: ${truncate(generateText, 200)}`);
+  }
+
+  if (generateData?.code !== 0) {
+    throw new Error(`A2E video submit API error ${generateData?.code || 'unknown'}: ${generateData?.msg || 'unknown error'}`);
+  }
+
+  const taskId = generateData?.data?._id;
+  if (typeof taskId !== 'string' || !taskId) {
+    throw new Error('A2E video submit response missing task _id');
+  }
+
+  // Step 3: Poll task status via /api/v1/video/list
+  const start = Date.now();
+  const maxPollMs = 10 * 60 * 1000; // max 10 minutes
+  let pollIntervalMs = 5000; // start with 5 seconds
+
+  if (onProgress) onProgress(`A2E video task ${taskId.slice(0, 8)} accepted; polling status...`);
+
+  while (Date.now() - start < maxPollMs) {
+    await sleep(pollIntervalMs);
+    // Exponential backoff up to 15 seconds
+    pollIntervalMs = Math.min(pollIntervalMs + 2000, 15000);
+
+    const listResp = await fetch(`${baseUrl}/api/v1/video/list`, withMediaRequestInit(ctx, {
+      method: 'POST',
+      headers: {
+        'authorization': `Bearer ${credentials.apiKey}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    }));
+
+    if (!listResp.ok) {
+      // transient fetch failure, wait and retry
+      continue;
+    }
+
+    const listText = await listResp.text();
+    let listData: any;
+    try {
+      listData = JSON.parse(listText);
+    } catch {
+      continue;
+    }
+
+    if (listData?.code !== 0) {
+      continue;
+    }
+
+    // Try finding the task in various possible response list shapes
+    let items: any[] = [];
+    if (Array.isArray(listData?.data)) {
+      items = listData.data;
+    } else if (Array.isArray(listData?.data?.list)) {
+      items = listData.data.list;
+    }
+
+    const task = items.find((item: any) => item?._id === taskId);
+    if (!task) {
+      continue;
+    }
+
+    const elapsed = Math.round((Date.now() - start) / 1000);
+    if (onProgress) {
+      onProgress(`A2E video task ${taskId.slice(0, 8)} status=${task.status} (${elapsed}s)`);
+    }
+
+    if (task.status === 'success') {
+      const resultUrl = task.result;
+      if (typeof resultUrl !== 'string' || !resultUrl) {
+        throw new Error('A2E video task completed but missing result URL');
+      }
+
+      const urlCheck = await assertExternalAssetUrl(resultUrl);
+      if (!urlCheck.ok) {
+        throw new Error(`A2E video asset security check: ${urlCheck.error}`);
+      }
+
+      const dlResp = await fetch(resultUrl, withMediaRequestInit(ctx, { redirect: 'error' }));
+      if (!dlResp.ok) {
+        throw new Error(`A2E video download failed ${dlResp.status}`);
+      }
+
+      const bytes = Buffer.from(await dlResp.arrayBuffer());
+      if (bytes.length === 0) {
+        throw new Error('A2E video download returned empty file');
+      }
+
+      return {
+        bytes,
+        providerNote: `a2e/${ctx.wireModel} · avatar=${anchorId} · ${elapsed}s · ${bytes.length} bytes`,
+        suggestedExt: '.mp4',
+      };
+    }
+
+    if (task.status === 'failed') {
+      throw new Error(`A2E video task failed on server: ${task.msg || 'unknown error'}`);
+    }
+  }
+
+  throw new Error(`A2E video task timed out after 10 minutes`);
 }
 
 // ---------------------------------------------------------------------------

@@ -103,6 +103,7 @@ const ENV_KEYS: Record<string, string[]> = {
   senseaudio: ['OD_SENSEAUDIO_API_KEY', 'SENSEAUDIO_API_KEY'],
   tavily: ['OD_TAVILY_API_KEY', 'TAVILY_API_KEY'],
   leonardo: ['OD_LEONARDO_API_KEY', 'LEONARDO_API_KEY'],
+  a2e: ['OD_A2E_API_KEY', 'A2E_API_KEY'],
 };
 
 // Resolve an `OD_*_DIR` env override using the same semantics as
