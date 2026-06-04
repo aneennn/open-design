@@ -633,6 +633,50 @@ describe('NewProjectPanel design system defaults', () => {
       }),
     );
   });
+
+  it('saves A2E video creation with the selected aspect, duration and voice/avatar id metadata', () => {
+    const onCreate = vi.fn();
+    render(
+      <NewProjectPanel
+        skills={skills}
+        designSystems={designSystems}
+        defaultDesignSystemId="clay"
+        templates={[]}
+        onDeleteTemplate={vi.fn()}
+        promptTemplates={[]}
+        onCreate={onCreate}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Media' }));
+    fireEvent.click(screen.getByTestId('new-project-media-surface-video'));
+    fireEvent.change(screen.getByTestId('new-project-name'), {
+      target: { value: 'A2E Video payload metadata' },
+    });
+    
+    // Select A2E video model
+    fireEvent.click(screen.getByTestId('model-picker-trigger'));
+    fireEvent.click(screen.getByTestId('model-picker-option-a2e-avatar-video'));
+
+    // Input A2E voice/avatar id
+    fireEvent.change(screen.getByPlaceholderText('Provider voice id, optional'), {
+      target: { value: 'my-avatar-anchor-id' },
+    });
+
+    fireEvent.click(screen.getByTestId('create-project'));
+
+    expect(onCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'A2E Video payload metadata',
+        designSystemId: null,
+        metadata: expect.objectContaining({
+          kind: 'video',
+          videoModel: 'a2e-avatar-video',
+          voice: 'my-avatar-anchor-id',
+        }),
+      }),
+    );
+  });
 });
 
 describe('NewProjectPanel folder import feedback', () => {

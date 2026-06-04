@@ -3841,7 +3841,10 @@ async function renderA2EVideo(ctx: MediaContext, credentials: ProviderConfig, on
   }
   const baseUrl = (credentials.baseUrl || 'https://video.a2e.ai').replace(/\/$/, '');
 
-  const anchorId = (ctx.voice && ctx.voice.trim()) || '507f1f77bcf86cd799439011';
+  const anchorId = ctx.voice && ctx.voice.trim();
+  if (!anchorId) {
+    throw new Error('no A2E Avatar/Anchor ID provided — enter it in the project Voice field or configure it in media metadata');
+  }
 
   // Step 1: Generate TTS Audio first using the prompt
   if (onProgress) onProgress('Converting text prompt to speech via A2E TTS...');

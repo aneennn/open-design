@@ -923,10 +923,12 @@ export function NewProjectPanel({
             videoModel={videoModel}
             videoAspect={videoAspect}
             videoLength={videoLength}
+            voice={voice}
             mediaProviders={mediaProviders}
             onVideoModel={handleVideoModel}
             onVideoAspect={setVideoAspect}
             onVideoLength={setVideoLength}
+            onVoice={setVoice}
           />
         ) : null}
 
@@ -2268,6 +2270,8 @@ function MediaProjectOptions(props:
       onVideoModel: (value: string) => void;
       onVideoAspect: (value: MediaAspect) => void;
       onVideoLength: (value: number) => void;
+      voice: string;
+      onVoice: (value: string) => void;
     }
   | {
       surface: 'audio';
@@ -2329,6 +2333,16 @@ function MediaProjectOptions(props:
             ))}
           </select>
         </label>
+        {props.videoModel === 'a2e-avatar-video' ? (
+          <label className="newproj-label">
+            <span>{t('newproj.voiceLabel')}</span>
+            <input
+              value={props.voice}
+              placeholder={t('newproj.voicePlaceholder')}
+              onChange={(e) => props.onVoice(e.target.value)}
+            />
+          </label>
+        ) : null}
       </div>
     );
   }
@@ -2786,6 +2800,7 @@ function buildMetadata(input: {
         ...(videoModel ? { videoModel } : {}),
         videoAspect: input.videoAspect,
         videoLength: input.videoLength,
+        ...(input.voice.trim() ? { voice: input.voice.trim() } : {}),
         ...buildPromptTemplateMetadata(input.promptTemplate),
         ...inspirations,
       };
