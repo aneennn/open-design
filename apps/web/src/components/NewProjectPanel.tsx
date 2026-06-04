@@ -329,6 +329,7 @@ export function NewProjectPanel({
   const [audioModel, setAudioModel] = useState(DEFAULT_AUDIO_MODEL.speech);
   const [audioDuration, setAudioDuration] = useState(10);
   const [voice, setVoice] = useState('');
+  const [customVoice, setCustomVoice] = useState(false);
   // Per-surface curated prompt template the user picked. Tracked
   // independently for image vs video so flipping tabs doesn't clobber the
   // other one's pick. The body is editable in-line and the edited copy is
@@ -378,16 +379,7 @@ export function NewProjectPanel({
   const showDesignSystemPicker =
     tabSupportsDesignSystem && !tabDefaultSkillForcesNoDs;
 
-  // Normalize/strip custom: prefix when switching away from A2E models
-  useEffect(() => {
-    if (voice.startsWith('custom:')) {
-      const isA2EAudio = tab === 'media' && mediaSurface === 'audio' && audioModel === 'a2e-tts';
-      const isA2EVideo = tab === 'media' && mediaSurface === 'video' && videoModel === 'a2e-avatar-video';
-      if (!isA2EAudio && !isA2EVideo) {
-        setVoice((v) => v.startsWith('custom:') ? v.slice(7) : v);
-      }
-    }
-  }, [tab, mediaSurface, audioModel, videoModel, voice]);
+
 
   useEffect(() => {
     if (dsSelectionTouched) return;
@@ -684,6 +676,7 @@ export function NewProjectPanel({
       audioModel,
       audioDuration,
       voice,
+      customVoice,
       inspirationIds: inspirations,
       promptTemplate: promptTemplatePick,
     });
@@ -940,6 +933,8 @@ export function NewProjectPanel({
             onVideoAspect={setVideoAspect}
             onVideoLength={setVideoLength}
             onVoice={setVoice}
+            customVoice={customVoice}
+            onCustomVoice={setCustomVoice}
           />
         ) : null}
 
@@ -961,6 +956,8 @@ export function NewProjectPanel({
             onAudioModel={setAudioModel}
             onAudioDuration={setAudioDuration}
             onVoice={setVoice}
+            customVoice={customVoice}
+            onCustomVoice={setCustomVoice}
           />
         ) : null}
 
@@ -2283,6 +2280,8 @@ function MediaProjectOptions(props:
       onVideoLength: (value: number) => void;
       voice: string;
       onVoice: (value: string) => void;
+      customVoice: boolean;
+      onCustomVoice: (value: boolean) => void;
     }
   | {
       surface: 'audio';
@@ -2295,6 +2294,8 @@ function MediaProjectOptions(props:
       onAudioModel: (value: string) => void;
       onAudioDuration: (value: number) => void;
       onVoice: (value: string) => void;
+      customVoice: boolean;
+      onCustomVoice: (value: boolean) => void;
     }
 ) {
   const t = useT();
@@ -2349,22 +2350,16 @@ function MediaProjectOptions(props:
             <label className="newproj-label">
               <span>{t('newproj.voiceLabel')}</span>
               <input
-                value={props.voice.startsWith('custom:') ? props.voice.slice(7) : props.voice}
+                value={props.voice}
                 placeholder={t('newproj.voicePlaceholder')}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  props.onVoice(props.voice.startsWith('custom:') ? `custom:${val}` : val);
-                }}
+                onChange={(e) => props.onVoice(e.target.value)}
               />
             </label>
             <CompactToggle
               label="Custom avatar"
               hint="Check this if the ID belongs to a custom/cloned avatar instead of a system avatar"
-              checked={props.voice.startsWith('custom:')}
-              onChange={(checked) => {
-                const val = props.voice.startsWith('custom:') ? props.voice.slice(7) : props.voice;
-                props.onVoice(checked ? `custom:${val}` : val);
-              }}
+              checked={props.customVoice}
+              onChange={props.onCustomVoice}
             />
           </div>
         ) : null}
@@ -2412,23 +2407,17 @@ function MediaProjectOptions(props:
           <label className="newproj-label">
             <span>{t('newproj.voiceLabel')}</span>
             <input
-              value={props.voice.startsWith('custom:') ? props.voice.slice(7) : props.voice}
+              value={props.voice}
               placeholder={t('newproj.voicePlaceholder')}
-              onChange={(e) => {
-                const val = e.target.value;
-                props.onVoice(props.voice.startsWith('custom:') ? `custom:${val}` : val);
-              }}
+              onChange={(e) => props.onVoice(e.target.value)}
             />
           </label>
           {props.audioModel === 'a2e-tts' ? (
             <CompactToggle
               label="Custom voice"
               hint="Check this if the ID belongs to a custom/cloned voice instead of a system voice"
-              checked={props.voice.startsWith('custom:')}
-              onChange={(checked) => {
-                const val = props.voice.startsWith('custom:') ? props.voice.slice(7) : props.voice;
-                props.onVoice(checked ? `custom:${val}` : val);
-              }}
+              checked={props.customVoice}
+              onChange={props.onCustomVoice}
             />
           ) : null}
         </div>
@@ -2769,6 +2758,7 @@ function buildMetadata(input: {
   audioModel: string;
   audioDuration: number;
   voice: string;
+  customVoice: boolean;
   inspirationIds: string[];
   promptTemplate: PromptTemplatePick | null;
 }): ProjectMetadata {
@@ -2836,24 +2826,30 @@ function buildMetadata(input: {
     }
     if (input.mediaSurface === 'video') {
       const videoModel = input.videoModel.trim();
+      const finalVoice = (videoModel === 'a2e-avatar-video' && input.customVoice && input.voice.trim())
+        ? `custom:${input.voice.trim()}`
+        : input.voice.trim();
       return {
         kind,
         ...(videoModel ? { videoModel } : {}),
         videoAspect: input.videoAspect,
         videoLength: input.videoLength,
-        ...(input.voice.trim() ? { voice: input.voice.trim() } : {}),
+        ...(finalVoice ? { voice: finalVoice } : {}),
         ...buildPromptTemplateMetadata(input.promptTemplate),
         ...inspirations,
       };
     }
     const audioModel = input.audioModel.trim();
+    const finalVoice = (audioModel === 'a2e-tts' && input.customVoice && input.voice.trim())
+      ? `custom:${input.voice.trim()}`
+      : input.voice.trim();
     return {
       kind,
       audioKind: input.audioKind,
       ...(audioModel ? { audioModel } : {}),
       audioDuration: input.audioDuration,
-      ...(input.audioKind === 'speech' && input.voice.trim()
-        ? { voice: input.voice.trim() }
+      ...(input.audioKind === 'speech' && finalVoice
+        ? { voice: finalVoice }
         : {}),
       ...inspirations,
     };

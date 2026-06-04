@@ -814,6 +814,55 @@ describe('NewProjectPanel design system defaults', () => {
       }),
     );
   });
+
+  it('preserves custom voice setting when switching away and back to A2E-TTS', () => {
+    const onCreate = vi.fn();
+    render(
+      <NewProjectPanel
+        skills={skills}
+        designSystems={designSystems}
+        defaultDesignSystemId="clay"
+        templates={[]}
+        onDeleteTemplate={vi.fn()}
+        promptTemplates={[]}
+        onCreate={onCreate}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Media' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Audio' }));
+    
+    // Select A2E audio model
+    fireEvent.click(screen.getByTestId('model-picker-trigger'));
+    fireEvent.click(screen.getByTestId('model-picker-option-a2e-tts'));
+
+    // Input A2E voice id
+    fireEvent.change(screen.getByPlaceholderText('Provider voice id, optional'), {
+      target: { value: 'my-custom-voice-id' },
+    });
+
+    // Check Custom voice toggle
+    fireEvent.click(screen.getByRole('button', { name: /Custom voice/i }));
+
+    // Switch model away from a2e-tts
+    fireEvent.click(screen.getByTestId('model-picker-trigger'));
+    fireEvent.click(screen.getByTestId('model-picker-option-minimax-tts'));
+
+    // Switch back to a2e-tts
+    fireEvent.click(screen.getByTestId('model-picker-trigger'));
+    fireEvent.click(screen.getByTestId('model-picker-option-a2e-tts'));
+
+    fireEvent.click(screen.getByTestId('create-project'));
+
+    expect(onCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          audioModel: 'a2e-tts',
+          voice: 'custom:my-custom-voice-id',
+        }),
+      }),
+    );
+  });
 });
 
 describe('NewProjectPanel folder import feedback', () => {
