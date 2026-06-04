@@ -263,6 +263,49 @@ describe('generation preview helpers', () => {
     ).toBeNull();
   });
 
+  it('does not cover an available preview for a stale failed row without an error event', () => {
+    const assistant: ChatMessage = {
+      id: 'a1',
+      role: 'assistant',
+      content: 'All done!',
+      runStatus: 'failed',
+      startedAt: Date.now() - 4_000,
+      events: [{ kind: 'text', text: 'All done!' }],
+    };
+    expect(
+      buildGenerationPreviewState({
+        designSystemProject: false,
+        messages: [assistant],
+        streaming: false,
+        activeTab: 'index.html',
+        projectFiles: [{ name: 'index.html', size: 1, mtime: 1, kind: 'html', mime: 'text/html' }],
+        liveArtifacts: [],
+      }),
+    ).toBeNull();
+  });
+
+  it('keeps an explicit failed state over a preview when the run has an error event', () => {
+    const assistant: ChatMessage = {
+      id: 'a1',
+      role: 'assistant',
+      content: '',
+      runStatus: 'failed',
+      startedAt: Date.now() - 4_000,
+      events: [{ kind: 'status', label: 'error', detail: 'Generation failed', code: 'UNKNOWN' }],
+    };
+    const state = buildGenerationPreviewState({
+      designSystemProject: false,
+      messages: [assistant],
+      streaming: false,
+      activeTab: 'index.html',
+      projectFiles: [{ name: 'index.html', size: 1, mtime: 1, kind: 'html', mime: 'text/html' }],
+      liveArtifacts: [],
+    });
+    expect(state?.phase).toBe('failed');
+    expect(state?.errorMessage).toBe('Generation failed');
+    expect(state?.retryTarget).toBe(assistant);
+  });
+
   it('builds a failed state with a retry target', () => {
     const assistant: ChatMessage = {
       id: 'a1',
@@ -285,6 +328,114 @@ describe('generation preview helpers', () => {
     expect(state?.failed).toBe(true);
     expect(state?.errorMessage).toBe('Network error');
     expect(state?.retryTarget).toBe(assistant);
+    // No structured code on this run, so it stays a generic retry with no
+    // AMR promotion.
+    expect(state?.errorCode).toBeNull();
+    expect(state?.failureUi?.primaryAction).toBe('retry');
+    expect(state?.promoteAmrSwitch).toBe(false);
+  });
+
+  it('classifies a rate-limited failure from the error event code', () => {
+    const assistant: ChatMessage = {
+      id: 'a1',
+      role: 'assistant',
+      content: '',
+      runStatus: 'failed',
+      startedAt: Date.now() - 8_000,
+      events: [
+        { kind: 'status', label: 'error', detail: 'Rate limited', code: 'RATE_LIMITED' },
+      ],
+    };
+    const state = buildGenerationPreviewState({
+      designSystemProject: false,
+      messages: [assistant],
+      streaming: false,
+      activeTab: null,
+      projectFiles: [],
+      liveArtifacts: [],
+    });
+    expect(state?.phase).toBe('failed');
+    expect(state?.errorCode).toBe('RATE_LIMITED');
+    // Non-AMR agent + a model/quota code keeps a plain retry but promotes AMR.
+    expect(state?.failureUi?.primaryAction).toBe('retry');
+    expect(state?.failureUi?.showSwitchCard).toBe(true);
+    expect(state?.promoteAmrSwitch).toBe(true);
+  });
+
+  it('does not promote AMR for an upstream outage (switching would not help)', () => {
+    const assistant: ChatMessage = {
+      id: 'a1',
+      role: 'assistant',
+      content: '',
+      runStatus: 'failed',
+      startedAt: Date.now() - 8_000,
+      events: [
+        { kind: 'status', label: 'error', detail: 'Upstream down', code: 'UPSTREAM_UNAVAILABLE' },
+      ],
+    };
+    const state = buildGenerationPreviewState({
+      designSystemProject: false,
+      messages: [assistant],
+      streaming: false,
+      activeTab: null,
+      projectFiles: [],
+      liveArtifacts: [],
+    });
+    expect(state?.errorCode).toBe('UPSTREAM_UNAVAILABLE');
+    // resolveRunFailureUi still flags showSwitchCard, but the preview gate
+    // deliberately suppresses the promotion card for outages.
+    expect(state?.failureUi?.showSwitchCard).toBe(true);
+    expect(state?.promoteAmrSwitch).toBe(false);
+  });
+
+  it('mirrors the AMR authorize action for an auth-required failure', () => {
+    const assistant: ChatMessage = {
+      id: 'a1',
+      role: 'assistant',
+      content: '',
+      agentId: 'amr',
+      runStatus: 'failed',
+      startedAt: Date.now() - 8_000,
+      events: [
+        { kind: 'status', label: 'error', detail: 'Authorize first', code: 'AMR_AUTH_REQUIRED' },
+      ],
+    };
+    const state = buildGenerationPreviewState({
+      designSystemProject: false,
+      messages: [assistant],
+      streaming: false,
+      activeTab: null,
+      projectFiles: [],
+      liveArtifacts: [],
+    });
+    expect(state?.errorCode).toBe('AMR_AUTH_REQUIRED');
+    expect(state?.failureUi?.primaryAction).toBe('authorize');
+    expect(state?.failureUi?.messageKey).toBe('chat.amrError.authMessage');
+    // The AMR agent itself has the inline authorize action, so there is no
+    // "switch to AMR" promotion card.
+    expect(state?.promoteAmrSwitch).toBe(false);
+  });
+
+  it('leaves errorCode and failureUi null while a run is still generating', () => {
+    const assistant: ChatMessage = {
+      id: 'a1',
+      role: 'assistant',
+      content: '',
+      runStatus: 'running',
+      startedAt: Date.now(),
+      events: [{ kind: 'status', label: 'thinking' }],
+    };
+    const state = buildGenerationPreviewState({
+      designSystemProject: false,
+      messages: [assistant],
+      streaming: true,
+      activeTab: null,
+      projectFiles: [],
+      liveArtifacts: [],
+    });
+    expect(state?.phase).toBe('generating');
+    expect(state?.errorCode).toBeNull();
+    expect(state?.failureUi).toBeNull();
   });
 
   it('hides preview state once a preview tab is active', () => {

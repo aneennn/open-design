@@ -29,6 +29,11 @@
 //                              for grok-imagine-video (t2v + i2v + audio)
 //   * provider 'imagerouter'→ ImageRouter OpenAI-compatible image/video
 //                              generation endpoints
+//   * provider 'openrouter' → OpenRouter unified gateway: synchronous
+//                              /chat/completions for image generation
+//                              (Gemini Flash, Flux, Recraft) and async
+//                              /videos submit + poll for video
+//                              (Seedance 2.0, Veo 3.1, Wan 2.7)
 //   * provider 'custom-image'→ user-supplied OpenAI-compatible
 //                              /v1/images/generations + /v1/images/edits
 //                              endpoints
@@ -58,7 +63,7 @@ import {
   findProvider,
   modelsForSurface,
 } from './media-models.js';
-import { assertExternalAssetUrl } from './connectionTest.js';
+import { assertAndFetchExternalAsset } from './connectionTest.js';
 import { resolveModelAlias, resolveProviderConfig } from './media-config.js';
 import {
   ensureProject,
@@ -66,6 +71,14 @@ import {
   mimeFor,
   sanitizeName,
 } from './projects.js';
+import {
+  AIHUBMIX_DEFAULT_BASE_URL,
+  aihubmixHeaders,
+  aihubmixWireModel,
+  aihubmixVideoSeconds,
+  aihubmixGeminiImageBytes,
+  classifyAIHubMixModel,
+} from './aihubmix.js';
 
 const execFile = promisify(execFileCb);
 type ProviderConfig = { apiKey?: string; baseUrl?: string; model?: string };
@@ -111,6 +124,8 @@ type MediaContext = {
   compositionDir: string | null;
   imageRef: ImageRef | null;
   requestInit: MediaRequestInit;
+  /** Additional reference images for multi-image i2v / style reference flows. */
+  imageRefs: ImageRef[];
 };
 type RenderResult = { bytes: Buffer; providerNote: string; suggestedExt?: string };
 type JsonRecord = Record<string, unknown>;
@@ -288,7 +303,7 @@ export async function generateMedia(args: {
   projectRoot: string; projectsRoot: string; projectId: string; surface: MediaSurface; model: string;
   prompt?: string; output?: string; aspect?: string; length?: number; duration?: number; voice?: string;
   audioKind?: AudioKind; language?: string; loop?: boolean; promptInfluence?: number;
-  compositionDir?: string; image?: string; onProgress?: ProgressFn; requestInit?: MediaRequestInit;
+  compositionDir?: string; image?: string; images?: string[]; onProgress?: ProgressFn; requestInit?: MediaRequestInit;
 }) {
   const {
     projectRoot,
@@ -333,6 +348,7 @@ export async function generateMedia(args: {
   // is needed because the fal renderer reads ctx.surface directly.
   let def = findMediaModel(model);
   let isFalCustomPath = false;
+  let isCatalogBypass = false;
   if (!def) {
     if (/^fal-ai\//.test(model)) {
       isFalCustomPath = true;
@@ -342,6 +358,27 @@ export async function generateMedia(args: {
         hint: 'Fal.ai',
         provider: 'fal',
         caps: surface === 'image' ? ['t2i'] : surface === 'video' ? ['t2v'] : [],
+      };
+    } else if (/^aihubmix-/.test(model)) {
+      // AIHubMix image/audio models are discovered live from its catalogue
+      // (GET /api/v1/models?type=image_generation), so most ids are NOT in the
+      // static registry. They all render through the same OpenAI-compatible
+      // endpoint, so synthesize a def on the fly — aihubmixWireModel() strips
+      // the `aihubmix-` prefix to the real wire name inside the renderer.
+      isCatalogBypass = true;
+      def = {
+        id: model,
+        label: model,
+        hint: 'AIHubMix',
+        provider: 'aihubmix',
+        caps:
+          surface === 'image'
+            ? ['t2i', 'i2i']
+            : surface === 'video'
+              ? ['t2v', 'i2v']
+              : surface === 'audio'
+                ? ['tts']
+                : [],
       };
     } else {
       throw new Error(
@@ -353,7 +390,7 @@ export async function generateMedia(args: {
   // Reject cross-surface combinations for catalogued models.
   const resolvedAudioKind =
     surface === 'audio' ? audioKind || 'music' : undefined;
-  if (!isFalCustomPath) {
+  if (!isFalCustomPath && !isCatalogBypass) {
     const allowed = modelsForSurface(surface, resolvedAudioKind);
     if (!allowed.some((m) => m.id === model)) {
       const ids = allowed.map((m) => m.id).join(', ');
@@ -400,6 +437,19 @@ export async function generateMedia(args: {
   // and decide how to splice the data URL into their request.
   const imageRef = await resolveProjectImage(image, dir);
 
+  // Multi-image support: resolve additional images from the `images`
+  // array param. The first resolved image (imageRef) is the primary
+  // reference; additional images flow as style/content references.
+  const extraImages = Array.isArray(args.images) ? args.images : [];
+  const imageRefs: ImageRef[] = [];
+  if (imageRef) imageRefs.push(imageRef);
+  for (const imgPath of extraImages) {
+    const ref = await resolveProjectImage(imgPath, dir);
+    if (ref && !imageRefs.some((r) => r.abs === ref.abs)) {
+      imageRefs.push(ref);
+    }
+  }
+
   // Resolve any user-configured model alias BEFORE we hand the id to a
   // dispatcher (issue #1277). Catalog lookup + surface validation above
   // ran against the original id so we still enforce the registered
@@ -434,6 +484,7 @@ export async function generateMedia(args: {
     // the agent didn't pass --image. See resolveProjectImage below.
     imageRef,
     requestInit: requestInit || {},
+    imageRefs,
   };
 
   const credentials = await resolveProviderConfig(projectRoot, def.provider);
@@ -479,6 +530,25 @@ export async function generateMedia(args: {
       && ctx.audioKind === 'speech'
     ) {
       const result = await renderOpenAISpeech(ctx, credentials, safeOut);
+      bytes = result.bytes;
+      providerNote = result.providerNote;
+      suggestedExt = result.suggestedExt;
+    } else if (def.provider === 'aihubmix' && surface === 'image') {
+      const result = await renderAIHubMixImage(ctx, credentials);
+      bytes = result.bytes;
+      providerNote = result.providerNote;
+      suggestedExt = result.suggestedExt;
+    } else if (
+      def.provider === 'aihubmix'
+      && surface === 'audio'
+      && ctx.audioKind === 'speech'
+    ) {
+      const result = await renderAIHubMixTTS(ctx, credentials, safeOut);
+      bytes = result.bytes;
+      providerNote = result.providerNote;
+      suggestedExt = result.suggestedExt;
+    } else if (def.provider === 'aihubmix' && surface === 'video') {
+      const result = await renderAIHubMixVideo(ctx, credentials, args.onProgress);
       bytes = result.bytes;
       providerNote = result.providerNote;
       suggestedExt = result.suggestedExt;
@@ -528,6 +598,16 @@ export async function generateMedia(args: {
       suggestedExt = result.suggestedExt;
     } else if (def.provider === 'custom-image' && surface === 'image') {
       const result = await renderCustomOpenAIImage(ctx, credentials);
+      bytes = result.bytes;
+      providerNote = result.providerNote;
+      suggestedExt = result.suggestedExt;
+    } else if (def.provider === 'openrouter' && surface === 'image') {
+      const result = await renderOpenRouterImage(ctx, credentials);
+      bytes = result.bytes;
+      providerNote = result.providerNote;
+      suggestedExt = result.suggestedExt;
+    } else if (def.provider === 'openrouter' && surface === 'video') {
+      const result = await renderOpenRouterVideo(ctx, credentials, args.onProgress);
       bytes = result.bytes;
       providerNote = result.providerNote;
       suggestedExt = result.suggestedExt;
@@ -1622,6 +1702,379 @@ function sniffImageExt(bytes: Buffer): string {
   return '.png';
 }
 
+
+// ---------------------------------------------------------------------------
+// Provider: OpenRouter — Unified video generation gateway (asynchronous).
+//
+// Docs: https://openrouter.ai/docs/guides/overview/multimodal/video-generation
+//
+// ---------------------------------------------------------------------------
+// OpenRouter image generation via Chat Completions API
+// ---------------------------------------------------------------------------
+// Unlike the dedicated /videos endpoint (async polling), image generation
+// goes through /chat/completions with `modalities: ["image"]` (or
+// `["image", "text"]` for multi-modal models like Gemini).  The response
+// embeds generated images as base64 data URLs in
+// `choices[0].message.images[].image_url.url`.
+//
+// Model IDs follow the same `openrouter/`-prefix convention as video.
+// ---------------------------------------------------------------------------
+
+async function renderOpenRouterImage(
+  ctx: MediaContext,
+  credentials: ProviderConfig,
+): Promise<RenderResult> {
+  if (!credentials.apiKey) {
+    throw new Error(
+      'no OpenRouter API key — configure it in Settings or set OPENROUTER_API_KEY',
+    );
+  }
+  const baseUrl = (credentials.baseUrl || 'https://openrouter.ai/api/v1').replace(/\/$/, '');
+
+  // Respect model-alias contract: credentials.model (from stored config)
+  // overrides ctx.wireModel (from OD_MEDIA_MODEL_ALIASES / resolveModelAlias).
+  // Then strip the `openrouter/` catalogue prefix so the wire model name
+  // matches OpenRouter's canonical slug.
+  const resolved = (credentials.model || ctx.wireModel).trim();
+  const wireModel = resolved.startsWith('openrouter/')
+    ? resolved.slice('openrouter/'.length)
+    : resolved;
+
+  // Multi-modal models (Gemini variants) accept both image and text
+  // output; image-only models (Flux, Recraft, Sourceful) only accept
+  // ["image"]. We use a simple heuristic on the slug.
+  const modalities: string[] = wireModel.includes('gemini')
+    ? ['image', 'text']
+    : ['image'];
+
+  const body: Record<string, unknown> = {
+    model: wireModel,
+    messages: [
+      {
+        role: 'user',
+        content: ctx.prompt || 'A high-quality reference image.',
+      },
+    ],
+    modalities,
+    stream: false,
+  };
+
+  // Pass aspect ratio + image size through image_config when specified.
+  const aspectRatio = openRouterAspectFor(ctx.aspect);
+  const imageConfig: Record<string, unknown> = {
+    aspect_ratio: aspectRatio,
+    image_size: '1K',
+  };
+  body.image_config = imageConfig;
+
+  const resp = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'authorization': `Bearer ${credentials.apiKey}`,
+      'content-type': 'application/json',
+      'HTTP-Referer': 'https://opendesign.dev',
+      'X-Title': 'Open Design',
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await resp.text();
+  if (!resp.ok) {
+    throw new Error(`openrouter image ${resp.status}: ${truncate(text, 240)}`);
+  }
+
+  let data: any;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(`openrouter image non-JSON response: ${truncate(text, 200)}`);
+  }
+
+  // Extract the first generated image from the response.
+  const images: any[] | undefined =
+    data?.choices?.[0]?.message?.images;
+  if (!images || images.length === 0) {
+    throw new Error(
+      `openrouter image response contained no images for model ${wireModel}: `
+      + truncate(text, 200),
+    );
+  }
+
+  const dataUrl: string | undefined = images[0]?.image_url?.url;
+  if (!dataUrl) {
+    throw new Error(
+      `openrouter image response missing image_url.url: ${truncate(text, 200)}`,
+    );
+  }
+
+  // Strip the data URL prefix (e.g. "data:image/png;base64,") and
+  // decode the remaining base64 payload.
+  const b64Match = dataUrl.match(/^data:image\/[^;]+;base64,(.+)$/s);
+  let bytes: Buffer;
+  if (b64Match) {
+    bytes = Buffer.from(b64Match[1]!, 'base64');
+  } else if (dataUrl.startsWith('http')) {
+    // Some models may return a plain URL instead of inline base64.
+    const imgResp = await fetch(dataUrl);
+    if (!imgResp.ok) throw new Error(`openrouter image download ${imgResp.status}`);
+    bytes = Buffer.from(await imgResp.arrayBuffer());
+  } else {
+    // Assume raw base64 without prefix.
+    bytes = Buffer.from(dataUrl, 'base64');
+  }
+
+  return {
+    bytes,
+    providerNote: `openrouter/${wireModel} · ${aspectRatio} · ${bytes.length} bytes`,
+    suggestedExt: sniffImageExt(bytes),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// OpenRouter's video API is a normalised, asynchronous interface sitting
+// in front of multiple upstream providers (ByteDance Seedance 2.0,
+// Google Veo 3.1, Alibaba Wan 2.7, etc.). The workflow mirrors the
+// Grok / Volcengine pattern used elsewhere in this file:
+//
+//   1. POST /api/v1/videos  → {id, polling_url, status:"pending"}
+//   2. Poll GET  polling_url until status flips to completed/failed
+//   3. Fetch the binary from unsigned_urls[0]
+//
+// Model IDs in our registry are prefixed with `openrouter/` (e.g.
+// `openrouter/bytedance/seedance-2.0`); we strip the prefix before
+// sending the wire request so OpenRouter receives the canonical slug
+// (e.g. `bytedance/seedance-2.0`).
+//
+// Image-to-video (i2v) is supported via `frame_images` with
+// `frame_type: "first_frame"` — the dispatcher already resolved the
+// project image into a base64 data URL in `ctx.imageRef`.
+// ---------------------------------------------------------------------------
+
+async function renderOpenRouterVideo(
+  ctx: MediaContext,
+  credentials: ProviderConfig,
+  onProgress?: ProgressFn,
+): Promise<RenderResult> {
+  if (!credentials.apiKey) {
+    throw new Error(
+      'no OpenRouter API key — configure it in Settings or set OPENROUTER_API_KEY',
+    );
+  }
+  const baseUrl = (credentials.baseUrl || 'https://openrouter.ai/api/v1').replace(/\/$/, '');
+
+  // Respect model-alias contract: credentials.model (from stored config)
+  // overrides ctx.wireModel (from OD_MEDIA_MODEL_ALIASES / resolveModelAlias).
+  // Then strip the `openrouter/` catalogue prefix so the wire model name
+  // matches OpenRouter's canonical slug (e.g. `bytedance/seedance-2.0`).
+  const resolved = (credentials.model || ctx.wireModel).trim();
+  const afterPrefix = resolved.startsWith('openrouter/')
+    ? resolved.slice('openrouter/'.length)
+    : resolved;
+
+  // Parse optional resolution suffix encoded in the model ID
+  // (e.g. `bytedance/seedance-2.0:1080p` → model `bytedance/seedance-2.0`,
+  // resolution `1080p`). When no suffix is present, default to 720p.
+  const RESOLUTION_SUFFIX_RE = /:(\d+p)$/;
+  const resSuffixMatch = afterPrefix.match(RESOLUTION_SUFFIX_RE);
+  const wireModel = resSuffixMatch
+    ? afterPrefix.slice(0, -resSuffixMatch[0].length)
+    : afterPrefix;
+  const resolution = resSuffixMatch?.[1] ?? '720p';
+
+  const aspectRatio = openRouterAspectFor(ctx.aspect);
+
+  // Build the request body.
+  const durationSec = ctx.length || 5;
+  const body: Record<string, unknown> = {
+    model: wireModel,
+    prompt: ctx.prompt || 'A short cinematic clip.',
+    aspect_ratio: aspectRatio,
+    resolution,
+    duration: durationSec,
+  };
+
+  // Image-to-video: pass reference images via OpenRouter's
+  // `frame_images` + `input_references` arrays. Seedance 2.0 supports
+  // up to 9 images, 3 video clips, and 3 audio clips as inputs.
+  // The first image is treated as the first_frame for i2v; additional
+  // images go into input_references for style/content guidance.
+  if (ctx.imageRefs.length > 0) {
+    const [primary, ...extras] = ctx.imageRefs;
+    body.frame_images = [
+      {
+        type: 'image_url',
+        image_url: { url: primary!.dataUrl },
+        frame_type: 'first_frame',
+      },
+    ];
+    if (extras.length > 0) {
+      body.input_references = extras.map((ref) => ({
+        type: 'image_url',
+        image_url: { url: ref.dataUrl },
+      }));
+    }
+  } else if (ctx.imageRef && ctx.imageRef.dataUrl) {
+    // Backward compat: single --image param without --images.
+    body.frame_images = [
+      {
+        type: 'image_url',
+        image_url: { url: ctx.imageRef.dataUrl },
+        frame_type: 'first_frame',
+      },
+    ];
+  }
+
+  // ── Step 1: Submit the generation request ──────────────────────────
+  const submitResp = await fetch(`${baseUrl}/videos`, {
+    method: 'POST',
+    headers: {
+      'authorization': `Bearer ${credentials.apiKey}`,
+      'content-type': 'application/json',
+      // OpenRouter attribution headers per
+      // https://openrouter.ai/docs/app-attribution
+      'HTTP-Referer': 'https://opendesign.dev',
+      'X-Title': 'Open Design',
+    },
+    body: JSON.stringify(body),
+  });
+  const submitText = await submitResp.text();
+  if (!submitResp.ok) {
+    throw new Error(
+      `openrouter video submit ${submitResp.status}: ${truncate(submitText, 240)}`,
+    );
+  }
+  let submitData: any;
+  try {
+    submitData = JSON.parse(submitText);
+  } catch {
+    throw new Error(`openrouter video non-JSON: ${truncate(submitText, 200)}`);
+  }
+
+  const jobId = submitData?.id;
+  const pollingUrl = submitData?.polling_url;
+  if (!jobId || !pollingUrl) {
+    throw new Error(
+      `openrouter video submit returned no job id or polling_url: ${truncate(submitText, 200)}`,
+    );
+  }
+
+  // ── Step 2: Poll until completion ──────────────────────────────────
+  const startedAt = Date.now();
+  const configuredMaxMs = Number(process.env.OD_OPENROUTER_VIDEO_MAX_POLL_MS);
+  const maxMs =
+    Number.isFinite(configuredMaxMs) && configuredMaxMs >= 60_000
+      ? configuredMaxMs
+      : 30 * 60 * 1000; // 30 minutes default
+
+  let lastStatus = submitData?.status || 'pending';
+  let videoUrls: string[] | null = null;
+
+  if (typeof onProgress === 'function') {
+    const mode = ctx.imageRef ? 'i2v' : 't2v';
+    onProgress(
+      `openrouter ${mode} job ${jobId} (${wireModel}) accepted; polling status…`,
+    );
+  }
+
+  while (Date.now() - startedAt < maxMs) {
+    await sleep(8000);
+    const pollResp = await fetch(pollingUrl, {
+      headers: {
+        'authorization': `Bearer ${credentials.apiKey}`,
+        'HTTP-Referer': 'https://opendesign.dev',
+        'X-Title': 'Open Design',
+      },
+    });
+    const pollText = await pollResp.text();
+    if (!pollResp.ok) {
+      throw new Error(
+        `openrouter poll ${pollResp.status}: ${truncate(pollText, 240)}`,
+      );
+    }
+    let pollData: any;
+    try {
+      pollData = JSON.parse(pollText);
+    } catch {
+      throw new Error(`openrouter poll non-JSON: ${truncate(pollText, 200)}`);
+    }
+
+    lastStatus = pollData?.status || '';
+    if (typeof onProgress === 'function') {
+      const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
+      onProgress(
+        `openrouter job ${jobId} status=${lastStatus || 'pending'} (elapsed ${elapsedSec}s)`,
+      );
+    }
+
+    if (lastStatus === 'completed') {
+      videoUrls = pollData?.unsigned_urls || null;
+      break;
+    }
+    if (
+      lastStatus === 'failed'
+      || lastStatus === 'expired'
+      || lastStatus === 'cancelled'
+    ) {
+      const reasonRaw =
+        pollData?.error?.message || pollData?.error || lastStatus;
+      const reason =
+        typeof reasonRaw === 'string' ? reasonRaw : JSON.stringify(reasonRaw);
+      throw new Error(`openrouter job ${lastStatus}: ${reason}`);
+    }
+  }
+
+  if (!videoUrls || videoUrls.length === 0) {
+    const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
+    const ceilingSec = Math.round(maxMs / 1000);
+    throw new Error(
+      `openrouter video timed out after ${elapsedSec}s waiting for status=completed `
+      + `(last status: ${lastStatus || 'pending'}, ceiling ${ceilingSec}s). `
+      + `If your jobs legitimately need longer, raise OD_OPENROUTER_VIDEO_MAX_POLL_MS.`,
+    );
+  }
+
+  // ── Step 3: Download the video binary ──────────────────────────────
+  // unsigned_urls are often third-party CDNs where sending our API key
+  // would leak credentials. However, sometimes OpenRouter returns a proxied
+  // openrouter.ai URL that still requires authorization. We only attach the
+  // auth header if the host is explicitly allowlisted as openrouter.ai.
+  const contentUrl = videoUrls[0]!;
+  const parsedContentUrl = new URL(contentUrl);
+
+  const dlHeaders: Record<string, string> = {};
+  if (parsedContentUrl.hostname === 'openrouter.ai') {
+    dlHeaders['authorization'] = `Bearer ${credentials.apiKey}`;
+  }
+
+  const dlResp = await fetch(contentUrl, { headers: dlHeaders });
+  if (!dlResp.ok) {
+    throw new Error(`openrouter video download ${dlResp.status}`);
+  }
+  const arr = await dlResp.arrayBuffer();
+  const bytes = Buffer.from(arr);
+
+  return {
+    bytes,
+    providerNote: `openrouter/${wireModel} · ${aspectRatio} · ${bytes.length} bytes`,
+    suggestedExt: '.mp4',
+  };
+}
+
+function openRouterAspectFor(aspect?: string): string {
+  // OpenRouter normalises aspect ratios across providers. Our
+  // MEDIA_ASPECTS vocabulary is a strict subset — pass known values
+  // through, default to 16:9 for video.
+  if (
+    aspect === '1:1'
+    || aspect === '16:9'
+    || aspect === '9:16'
+    || aspect === '4:3'
+    || aspect === '3:4'
+  ) {
+    return aspect;
+  }
+  return '16:9';
+}
+
 async function renderLeonardoImage(ctx: MediaContext, credentials: ProviderConfig): Promise<RenderResult> {
   if (!credentials.apiKey) {
     throw new Error(
@@ -2438,16 +2891,11 @@ async function renderSenseAudioImage(ctx: MediaContext, credentials: ProviderCon
   if (!url) {
     throw new Error('senseaudio image response missing url');
   }
-  // Mirror the chat-tool SSRF guard (byok-tools.ts): the gateway-returned
-  // `url` is attacker-controllable inside a successful response, so DNS-
-  // resolve it through validateBaseUrlResolved and refuse loopback /
-  // RFC1918 / metadata-service hosts. Pair with `redirect: 'error'` so a
-  // 3xx hop into private space is also blocked.
-  const urlCheck = await assertExternalAssetUrl(url);
-  if (!urlCheck.ok) {
-    throw new Error(`senseaudio image ${urlCheck.error}`);
-  }
-  const imgResp = await fetch(url, withMediaRequestInit(ctx, { redirect: 'error' }));
+  // The gateway-returned `url` is attacker-controllable inside a successful
+  // response. assertAndFetchExternalAsset DNS-resolves it and refuses loopback /
+  // RFC1918 / metadata-service hosts, and pins `redirect: 'error'` so a 3xx hop
+  // from a validated public URL into private space is blocked too.
+  const imgResp = await assertAndFetchExternalAsset(url, withMediaRequestInit(ctx));
   if (!imgResp.ok) {
     throw new Error(`senseaudio image fetch ${imgResp.status}`);
   }
@@ -2460,6 +2908,310 @@ async function renderSenseAudioImage(ctx: MediaContext, credentials: ProviderCon
     bytes,
     providerNote: `senseaudio/${ctx.wireModel} · ${size}${reference ? ' · i2i' : ''} · ${bytes.length} bytes`,
     suggestedExt: '.png',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Provider: AIHubMix — OpenAI-wire-compatible aggregator.
+//
+// Image:  POST /v1/images/generations  (OpenAI shape, b64_json or url)
+// Speech: POST /v1/audio/speech        (OpenAI shape, raw audio bytes)
+// Every request carries the fixed APP-Code attribution header. Catalogue ids
+// are `aihubmix-<wire>`; aihubmixWireModel() strips the prefix to the real
+// upstream model name before it hits the gateway.
+// ---------------------------------------------------------------------------
+
+async function renderAIHubMixImage(ctx: MediaContext, credentials: ProviderConfig): Promise<RenderResult> {
+  if (!credentials.apiKey) {
+    throw new Error('no AIHubMix API key — configure it in Settings or set OD_AIHUBMIX_API_KEY');
+  }
+  const baseUrl = credentials.baseUrl || AIHUBMIX_DEFAULT_BASE_URL;
+  const wireModel = aihubmixWireModel(credentials.model || ctx.wireModel);
+
+  // The live catalogue exposes Gemini/Imagen-family image models, which reject
+  // the OpenAI `/images/generations` shape ("Unknown name prompt/n/size") and
+  // must use the Gemini-native generateContent wire instead. Mirror the chat
+  // tool's per-model branch (executeAIHubMixGenerateImage) so the Home / New
+  // Project / CLI media path handles the same catalogue it now exposes.
+  if (classifyAIHubMixModel(wireModel) === 'gemini') {
+    return renderAIHubMixGeminiImage(ctx, credentials, baseUrl, wireModel);
+  }
+
+  const url = buildOpenAIImageUrl(baseUrl, false);
+
+  const body: Record<string, unknown> = {
+    model: wireModel,
+    prompt: ctx.prompt || 'A high-quality reference image.',
+    n: 1,
+    size: openaiSizeFor(wireModel, ctx.aspect),
+  };
+  if (wireModel.startsWith('dall-e-')) {
+    body.response_format = 'b64_json';
+    body.quality = wireModel === 'dall-e-3' ? 'hd' : 'standard';
+  } else {
+    body.quality = 'high';
+  }
+
+  const resp = await fetch(url, withMediaRequestInit(ctx, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...aihubmixHeaders(credentials.apiKey) },
+    body: JSON.stringify(body),
+  }));
+  const text = await resp.text();
+  if (!resp.ok) {
+    throw new Error(`aihubmix ${resp.status}: ${truncate(text, 240)}`);
+  }
+  let data: any;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(`aihubmix non-JSON response: ${truncate(text, 200)}`);
+  }
+  const entry = data && Array.isArray(data.data) ? data.data[0] : null;
+  if (!entry) throw new Error('aihubmix response had no data[0]');
+  let bytes;
+  if (entry.b64_json) {
+    bytes = Buffer.from(entry.b64_json, 'base64');
+  } else if (entry.url) {
+    const imgResp = await assertAndFetchExternalAsset(entry.url, withMediaRequestInit(ctx));
+    if (!imgResp.ok) throw new Error(`aihubmix image fetch ${imgResp.status}`);
+    bytes = Buffer.from(await imgResp.arrayBuffer());
+  } else {
+    throw new Error('aihubmix response had neither b64_json nor url');
+  }
+  return {
+    bytes,
+    providerNote: `aihubmix/${wireModel} · ${ctx.aspect} · ${bytes.length} bytes`,
+    suggestedExt: '.png',
+  };
+}
+
+// Gemini/Imagen-family image models on AIHubMix: the OpenAI image shape 400s
+// for these, so route them through the shared Gemini-native helper the chat
+// tool also uses (aihubmixGeminiImageBytes), passing the media request-init
+// wrapper so proxy/abort settings still apply.
+async function renderAIHubMixGeminiImage(
+  ctx: MediaContext,
+  credentials: ProviderConfig,
+  baseUrl: string,
+  wireModel: string,
+): Promise<RenderResult> {
+  if (!credentials.apiKey) {
+    throw new Error('no AIHubMix API key — configure it in Settings or set OD_AIHUBMIX_API_KEY');
+  }
+  const aspect = ctx.aspect || '1:1';
+  const bytes = await aihubmixGeminiImageBytes(
+    {
+      baseUrl,
+      apiKey: credentials.apiKey,
+      wireModel,
+      prompt: ctx.prompt || 'A high-quality reference image.',
+      aspect,
+    },
+    (url, init) => fetch(url, withMediaRequestInit(ctx, init)),
+  );
+  return {
+    bytes,
+    providerNote: `aihubmix/${wireModel} · ${aspect} · ${bytes.length} bytes (gemini-native)`,
+    suggestedExt: '.png',
+  };
+}
+
+async function renderAIHubMixTTS(ctx: MediaContext, credentials: ProviderConfig, fileName: string): Promise<RenderResult> {
+  if (!credentials.apiKey) {
+    throw new Error('no AIHubMix API key — configure it in Settings or set OD_AIHUBMIX_API_KEY');
+  }
+  const baseUrl = credentials.baseUrl || AIHUBMIX_DEFAULT_BASE_URL;
+  const wireModel = aihubmixWireModel(credentials.model || ctx.wireModel);
+  const url = buildOpenAISpeechUrl(baseUrl, false);
+  const format = openaiSpeechFormatFor(fileName);
+  const text = (ctx.prompt && ctx.prompt.trim()) || 'This is a test.';
+  const requestedVoice = (ctx.voice && ctx.voice.trim()) || '';
+  const voice = requestedVoice && OPENAI_TTS_VOICES.has(requestedVoice) ? requestedVoice : 'alloy';
+
+  const resp = await fetch(url, withMediaRequestInit(ctx, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...aihubmixHeaders(credentials.apiKey) },
+    body: JSON.stringify({ model: wireModel, input: text, voice, response_format: format }),
+  }));
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`aihubmix speech ${resp.status}: ${truncate(errText, 240)}`);
+  }
+  const bytes = Buffer.from(await resp.arrayBuffer());
+  if (bytes.length === 0) {
+    throw new Error('aihubmix speech returned zero bytes');
+  }
+  return {
+    bytes,
+    providerNote: `aihubmix/${wireModel} · ${voice} · ${format} · ${bytes.length} bytes`,
+    suggestedExt: format === 'opus' ? '.ogg' : `.${format}`,
+  };
+}
+
+// AIHubMix video uses the OpenAI Sora-style async `/v1/videos` API (NOT the
+// `/videos/generations` synchronous shape some gateways expose): POST to submit
+// a job, GET `/v1/videos/{id}` to poll status, then GET `/v1/videos/{id}/content`
+// to download the finished MP4. `aspect` maps to a concrete `size` string.
+function aihubmixVideoSizeFor(aspect: string | undefined): string {
+  switch (aspect) {
+    case '9:16':
+      return '720x1280';
+    case '1:1':
+      return '1024x1024';
+    case '4:3':
+      return '960x720';
+    case '3:4':
+      return '720x960';
+    case '16:9':
+    default:
+      return '1280x720';
+  }
+}
+
+async function renderAIHubMixVideo(
+  ctx: MediaContext,
+  credentials: ProviderConfig,
+  onProgress?: ProgressFn,
+): Promise<RenderResult> {
+  if (!credentials.apiKey) {
+    throw new Error('no AIHubMix API key — configure it in Settings or set OD_AIHUBMIX_API_KEY');
+  }
+  const baseUrl = (credentials.baseUrl || AIHUBMIX_DEFAULT_BASE_URL).replace(/\/$/, '');
+  const wireModel = aihubmixWireModel(credentials.model || ctx.wireModel);
+  const size = aihubmixVideoSizeFor(ctx.aspect);
+  // Snap to the model family's allowed duration set (Veo: 4/6/8, Sora: 4/8/12,
+  // wan: 5/10) so an out-of-set value isn't rejected upstream.
+  const seconds = aihubmixVideoSeconds(wireModel, ctx.length || 5);
+
+  const body: Record<string, unknown> = {
+    model: wireModel,
+    prompt: ctx.prompt || 'A short cinematic clip.',
+    size,
+    seconds,
+  };
+  // First-frame reference for i2v flows; AIHubMix accepts a data URL.
+  if (ctx.imageRef?.dataUrl) {
+    body.input_reference = ctx.imageRef.dataUrl;
+  }
+
+  const submitResp = await fetch(`${baseUrl}/videos`, withMediaRequestInit(ctx, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...aihubmixHeaders(credentials.apiKey) },
+    body: JSON.stringify(body),
+  }));
+  const submitText = await submitResp.text();
+  if (!submitResp.ok) {
+    throw new Error(`aihubmix video submit ${submitResp.status}: ${truncate(submitText, 240)}`);
+  }
+  let submitData: any;
+  try {
+    submitData = JSON.parse(submitText);
+  } catch {
+    throw new Error(`aihubmix video non-JSON: ${truncate(submitText, 200)}`);
+  }
+  const taskId = submitData?.id || submitData?.data?.id;
+  if (!taskId) throw new Error('aihubmix video response missing id');
+
+  // Poll until completed/failed. Sora-class generations routinely take a few
+  // minutes; match the Volcengine ceiling (12 min, env-overridable). Emit a
+  // heartbeat each tick so the agent's bash watchdog never marks the call hung.
+  const startedAt = Date.now();
+  const configuredMaxMs = Number(process.env.OD_AIHUBMIX_VIDEO_MAX_POLL_MS);
+  const maxMs =
+    Number.isFinite(configuredMaxMs) && configuredMaxMs >= 60_000
+      ? configuredMaxMs
+      : 12 * 60 * 1000;
+  if (typeof onProgress === 'function') {
+    const mode = ctx.imageRef ? 'i2v' : 't2v';
+    onProgress(`aihubmix ${mode} video task ${taskId} accepted; polling status…`);
+  }
+  let lastStatus = '';
+  let directUrl: string | null = null;
+  let done = false;
+  while (Date.now() - startedAt < maxMs) {
+    await sleep(4000);
+    const pollResp = await fetch(`${baseUrl}/videos/${encodeURIComponent(taskId)}`, withMediaRequestInit(ctx, {
+      headers: { ...aihubmixHeaders(credentials.apiKey) },
+    }));
+    const pollText = await pollResp.text();
+    if (!pollResp.ok) {
+      throw new Error(`aihubmix video poll ${pollResp.status}: ${truncate(pollText, 240)}`);
+    }
+    let pollData: any;
+    try {
+      pollData = JSON.parse(pollText);
+    } catch {
+      throw new Error(`aihubmix video poll non-JSON: ${truncate(pollText, 200)}`);
+    }
+    lastStatus = pollData?.status || pollData?.data?.status || '';
+    if (typeof onProgress === 'function') {
+      const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
+      onProgress(`aihubmix video task ${taskId} status=${lastStatus || 'pending'} (elapsed ${elapsedSec}s)`);
+    }
+    if (lastStatus === 'completed' || lastStatus === 'succeeded' || lastStatus === 'done') {
+      // Some gateways surface the asset URL inline; otherwise fall back to the
+      // /content download endpoint below.
+      directUrl =
+        pollData?.video_url
+        || pollData?.url
+        || pollData?.output_url
+        || pollData?.data?.video_url
+        || pollData?.data?.url
+        || (Array.isArray(pollData?.data) ? pollData.data[0]?.url : null)
+        || null;
+      done = true;
+      break;
+    }
+    if (lastStatus === 'failed' || lastStatus === 'cancelled' || lastStatus === 'error') {
+      const reason = pollData?.error?.message || pollData?.error || lastStatus;
+      throw new Error(`aihubmix video task ${lastStatus}: ${truncate(reason, 200)}`);
+    }
+  }
+  if (!done) {
+    throw new Error(`aihubmix video did not finish in time (last status: ${lastStatus || 'unknown'})`);
+  }
+
+  let bytes: Buffer;
+  if (directUrl) {
+    // AIHubMix's completed-video URL is often an authenticated endpoint on the
+    // AIHubMix origin (a bare GET returns 401). Re-send the Bearer + APP-Code
+    // headers when the asset is same-origin; a signed third-party CDN URL is
+    // fetched without our key. assertAndFetchExternalAsset re-validates the URL
+    // and pins `redirect: 'error'`, so a validated public URL can't 302 the
+    // daemon into private/metadata space or leak our headers to the hop target.
+    let sameOriginAsBase = false;
+    try {
+      sameOriginAsBase = new URL(directUrl).origin === new URL(baseUrl).origin;
+    } catch {
+      sameOriginAsBase = false;
+    }
+    const dl = await assertAndFetchExternalAsset(
+      directUrl,
+      withMediaRequestInit(
+        ctx,
+        sameOriginAsBase ? { headers: { ...aihubmixHeaders(credentials.apiKey) } } : {},
+      ),
+    );
+    if (!dl.ok) throw new Error(`aihubmix video fetch ${dl.status}`);
+    bytes = Buffer.from(await dl.arrayBuffer());
+  } else {
+    const contentResp = await fetch(`${baseUrl}/videos/${encodeURIComponent(taskId)}/content`, withMediaRequestInit(ctx, {
+      headers: { ...aihubmixHeaders(credentials.apiKey) },
+    }));
+    if (!contentResp.ok) {
+      throw new Error(`aihubmix video content ${contentResp.status}`);
+    }
+    bytes = Buffer.from(await contentResp.arrayBuffer());
+  }
+  if (bytes.length === 0) {
+    throw new Error('aihubmix video returned zero bytes');
+  }
+
+  return {
+    bytes,
+    providerNote: `aihubmix/${wireModel} · ${size} · ${seconds}s · ${bytes.length} bytes`,
+    suggestedExt: '.mp4',
   };
 }
 

@@ -35,6 +35,7 @@ export type MediaProviderId =
   | 'hyperframes'
   | 'nanobanana'
   | 'imagerouter'
+  | 'openrouter'
   | 'custom-image'
   | 'comfyui'
   | 'bfl'
@@ -49,6 +50,7 @@ export type MediaProviderId =
   | 'elevenlabs'
   | 'fishaudio'
   | 'senseaudio'
+  | 'aihubmix'
   | 'tavily'
   | 'leonardo'
   | 'stub';
@@ -141,6 +143,16 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
     docsUrl: 'https://docs.imagerouter.io/api-reference/image-generation/',
     supportsCustomModel: true,
     customModelPlaceholder: 'openai/gpt-image-2 or xAI/grok-imagine-video',
+  },
+  {
+    id: 'openrouter',
+    label: 'OpenRouter',
+    hint: 'Unified gateway for image + video models',
+    integrated: true,
+    credentialsRequired: true,
+    settingsVisible: true,
+    defaultBaseUrl: 'https://openrouter.ai/api/v1',
+    docsUrl: 'https://openrouter.ai/settings/keys',
   },
   {
     id: 'custom-image',
@@ -257,6 +269,18 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
     integrated: true,
     defaultBaseUrl: 'https://api.senseaudio.cn',
     docsUrl: 'https://docs.senseaudio.cn',
+  },
+  {
+    id: 'aihubmix',
+    label: 'AIHubMix',
+    hint: 'OpenAI-compatible aggregator · image + speech',
+    integrated: true,
+    credentialsRequired: true,
+    settingsVisible: true,
+    defaultBaseUrl: 'https://aihubmix.com/v1',
+    docsUrl: 'https://docs.aihubmix.com',
+    supportsCustomModel: true,
+    customModelPlaceholder: 'gpt-image-1 or dall-e-3',
   },
   {
     id: 'tavily',
@@ -386,6 +410,24 @@ export const IMAGE_MODELS: MediaModel[] = [
     caps: ['t2i', 'i2i'],
   },
 
+  // AIHubMix — OpenAI-compatible /v1/images/generations. Prefixed ids stay
+  // unique against the openai-provider entries; the prefix is stripped to the
+  // real wire name daemon-side.
+  {
+    id: 'aihubmix-gpt-image-1',
+    label: 'gpt-image-1 (AIHubMix)',
+    hint: 'AIHubMix · OpenAI gpt-image-1',
+    provider: 'aihubmix',
+    caps: ['t2i', 'i2i'],
+  },
+  {
+    id: 'aihubmix-dall-e-3',
+    label: 'dall-e-3 (AIHubMix)',
+    hint: 'AIHubMix · OpenAI DALL·E 3',
+    provider: 'aihubmix',
+    caps: ['t2i'],
+  },
+
   // xAI Grok Imagine — text-to-image (1k/2k, 11+ aspect ratios).
   {
     id: 'grok-imagine-image',
@@ -426,6 +468,11 @@ export const IMAGE_MODELS: MediaModel[] = [
     provider: 'imagerouter',
     caps: ['t2i'],
   },
+
+  // OpenRouter image models.
+  { id: 'openrouter/google/gemini-2.5-flash-image', label: 'gemini-flash-image (OR)', hint: 'OpenRouter · Gemini', provider: 'openrouter', caps: ['t2i'] },
+  { id: 'openrouter/black-forest-labs/flux-1.1-pro', label: 'flux-1.1-pro (OR)', hint: 'OpenRouter · BFL', provider: 'openrouter', caps: ['t2i'] },
+  { id: 'openrouter/recraft/recraft-v3', label: 'recraft-v3 (OR)', hint: 'OpenRouter · Recraft', provider: 'openrouter', caps: ['t2i'] },
 
   // Custom OpenAI-compatible image generation + edit endpoints.
   {
@@ -531,6 +578,14 @@ export const VIDEO_MODELS: MediaModel[] = [
     caps: ['t2v', 'i2v', 'audio'],
   },
 
+  // OpenRouter video models.
+  { id: 'openrouter/bytedance/seedance-2.0:1080p', label: 'seedance-2.0 1080p (OR)', hint: 'OpenRouter · ByteDance · 1080p', provider: 'openrouter', caps: ['t2v', 'i2v'], default: true },
+  { id: 'openrouter/bytedance/seedance-2.0', label: 'seedance-2.0 720p (OR)', hint: 'OpenRouter · ByteDance · 720p', provider: 'openrouter', caps: ['t2v', 'i2v'] },
+  { id: 'openrouter/bytedance/seedance-2.0:480p', label: 'seedance-2.0 480p (OR)', hint: 'OpenRouter · ByteDance · 480p', provider: 'openrouter', caps: ['t2v', 'i2v'] },
+  { id: 'openrouter/google/veo-3.1', label: 'veo-3.1 (OR)', hint: 'OpenRouter · Google', provider: 'openrouter', caps: ['t2v', 'i2v', 'audio'] },
+  { id: 'openrouter/alibaba/wan-2.7', label: 'wan-2.7 (OR)', hint: 'OpenRouter · Alibaba', provider: 'openrouter', caps: ['t2v', 'i2v'] },
+  { id: 'openrouter/kwaivgi/kling-v3.0-pro', label: 'kling-v3.0-pro (OR)', hint: 'OpenRouter · Kuaishou', provider: 'openrouter', caps: ['t2v', 'i2v'] },
+
   // ImageRouter — routed video models.
   {
     id: 'xAI/grok-imagine-video',
@@ -593,6 +648,7 @@ export const AUDIO_MODELS_BY_KIND: Record<AudioKind, MediaModel[]> = {
     { id: 'doubao-tts', label: 'doubao-tts', hint: 'Volcengine', provider: 'volcengine', caps: ['tts'] },
     { id: 'gpt-4o-mini-tts', label: 'gpt-4o-mini-tts', hint: 'OpenAI', provider: 'openai', caps: ['tts'] },
     { id: 'a2e-tts', label: 'a2e-tts', hint: 'A2E · High-fidelity text-to-speech', provider: 'a2e', caps: ['tts'] },
+    { id: 'aihubmix-tts-1', label: 'tts-1 (AIHubMix)', hint: 'AIHubMix · OpenAI tts-1', provider: 'aihubmix', caps: ['tts'] },
     { id: 'grok-tts', label: 'grok-tts', hint: 'xAI · multilingual · uses Grok subscription', provider: 'grok', caps: ['tts'] },
   ],
   sfx: [
@@ -640,6 +696,17 @@ export function findMediaModel(id: string): MediaModel | null {
 
 export function findProvider(id: MediaProviderId): MediaProvider | null {
   return MEDIA_PROVIDERS.find((p) => p.id === id) ?? null;
+}
+
+/**
+ * Resolve the provider that owns a model id. Live AIHubMix catalogue ids are
+ * `aihubmix-` prefixed and absent from the static registry, so match that
+ * namespace first; every other id resolves through {@link findMediaModel}.
+ * Returns undefined for unknown ids.
+ */
+export function mediaModelProviderId(id: string): MediaProviderId | undefined {
+  if (id.startsWith('aihubmix-')) return 'aihubmix';
+  return findMediaModel(id)?.provider;
 }
 
 /** All model IDs grouped by surface, used for prompt-side disclosure. */
