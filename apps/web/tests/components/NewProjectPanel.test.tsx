@@ -724,6 +724,96 @@ describe('NewProjectPanel design system defaults', () => {
       }),
     );
   });
+
+  it('normalizes/removes custom: prefix from voice when switching model away from A2E-TTS', () => {
+    const onCreate = vi.fn();
+    render(
+      <NewProjectPanel
+        skills={skills}
+        designSystems={designSystems}
+        defaultDesignSystemId="clay"
+        templates={[]}
+        onDeleteTemplate={vi.fn()}
+        promptTemplates={[]}
+        onCreate={onCreate}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Media' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Audio' }));
+    
+    // Select A2E audio model
+    fireEvent.click(screen.getByTestId('model-picker-trigger'));
+    fireEvent.click(screen.getByTestId('model-picker-option-a2e-tts'));
+
+    // Input A2E voice id
+    fireEvent.change(screen.getByPlaceholderText('Provider voice id, optional'), {
+      target: { value: 'my-custom-voice-id' },
+    });
+
+    // Check Custom voice toggle
+    fireEvent.click(screen.getByRole('button', { name: /Custom voice/i }));
+
+    // Switch model away from a2e-tts
+    fireEvent.click(screen.getByTestId('model-picker-trigger'));
+    fireEvent.click(screen.getByTestId('model-picker-option-minimax-tts'));
+
+    fireEvent.click(screen.getByTestId('create-project'));
+
+    expect(onCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          audioModel: 'minimax-tts',
+          voice: 'my-custom-voice-id',
+        }),
+      }),
+    );
+  });
+
+  it('normalizes/removes custom: prefix from voice when switching model away from A2E Video', () => {
+    const onCreate = vi.fn();
+    render(
+      <NewProjectPanel
+        skills={skills}
+        designSystems={designSystems}
+        defaultDesignSystemId="clay"
+        templates={[]}
+        onDeleteTemplate={vi.fn()}
+        promptTemplates={[]}
+        onCreate={onCreate}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Media' }));
+    fireEvent.click(screen.getByTestId('new-project-media-surface-video'));
+    
+    // Select A2E video model
+    fireEvent.click(screen.getByTestId('model-picker-trigger'));
+    fireEvent.click(screen.getByTestId('model-picker-option-a2e-avatar-video'));
+
+    // Input A2E voice/avatar id
+    fireEvent.change(screen.getByPlaceholderText('Provider voice id, optional'), {
+      target: { value: 'my-custom-avatar-id' },
+    });
+
+    // Check Custom avatar toggle
+    fireEvent.click(screen.getByRole('button', { name: /Custom avatar/i }));
+
+    // Switch model away from a2e-avatar-video
+    fireEvent.click(screen.getByTestId('model-picker-trigger'));
+    fireEvent.click(screen.getByTestId('model-picker-option-doubao-seedance-2-0-260128'));
+
+    fireEvent.click(screen.getByTestId('create-project'));
+
+    expect(onCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          videoModel: 'doubao-seedance-2-0-260128',
+          voice: 'my-custom-avatar-id',
+        }),
+      }),
+    );
+  });
 });
 
 describe('NewProjectPanel folder import feedback', () => {

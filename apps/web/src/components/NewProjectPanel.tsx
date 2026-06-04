@@ -378,6 +378,17 @@ export function NewProjectPanel({
   const showDesignSystemPicker =
     tabSupportsDesignSystem && !tabDefaultSkillForcesNoDs;
 
+  // Normalize/strip custom: prefix when switching away from A2E models
+  useEffect(() => {
+    if (voice.startsWith('custom:')) {
+      const isA2EAudio = tab === 'media' && mediaSurface === 'audio' && audioModel === 'a2e-tts';
+      const isA2EVideo = tab === 'media' && mediaSurface === 'video' && videoModel === 'a2e-avatar-video';
+      if (!isA2EAudio && !isA2EVideo) {
+        setVoice((v) => v.startsWith('custom:') ? v.slice(7) : v);
+      }
+    }
+  }, [tab, mediaSurface, audioModel, videoModel, voice]);
+
   useEffect(() => {
     if (dsSelectionTouched) return;
     setSelectedDsIds(initialDefaultDsSelection);
