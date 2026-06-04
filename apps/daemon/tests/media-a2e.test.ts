@@ -232,6 +232,165 @@ describe('a2e media generation', () => {
     expect(bytes.equals(mockVideoBytes)).toBe(true);
   });
 
+  it('renders A2E Text-to-Speech with a custom/cloned voice', async () => {
+    await writeConfig({
+      providers: {
+        a2e: {
+          apiKey: 'a2e-test-key',
+          baseUrl: TEST_A2E_BASE_URL,
+        },
+      },
+    });
+
+    const mockAudioBytes = Buffer.from([0x57, 0x41, 0x56, 0x45, 0x01, 0x02, 0x03]);
+    const mockAudioUrl = 'https://cdn.a2e.ai/tts/speech.wav';
+
+    const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+      const urlStr = String(input);
+      if (urlStr === `${TEST_A2E_BASE_URL}/api/v1/video/send_tts`) {
+        expect(init?.method).toBe('POST');
+        expect(JSON.parse(String(init?.body))).toEqual({
+          msg: 'This is an A2E custom voice test.',
+          speechRate: 1.0,
+          user_voice_id: '66dc3c1b7dc1f1c483cc5ab8',
+          country: 'en',
+          region: 'US',
+        });
+
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            data: mockAudioUrl,
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      }
+
+      if (urlStr === mockAudioUrl) {
+        return new Response(mockAudioBytes, {
+          status: 200,
+          headers: { 'content-type': 'audio/wav' },
+        });
+      }
+
+      throw new Error(`Unexpected fetch URL: ${urlStr}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await generateMedia({
+      projectRoot,
+      projectsRoot,
+      projectId: 'project-1',
+      surface: 'audio',
+      model: 'a2e-tts',
+      audioKind: 'speech',
+      voice: 'custom:66dc3c1b7dc1f1c483cc5ab8',
+      prompt: 'This is an A2E custom voice test.',
+      output: 'a2e-speech.wav',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.providerId).toBe('a2e');
+    expect(result.providerNote).toContain('a2e/a2e-tts');
+    expect(result.providerNote).toContain('voice=66dc3c1b7dc1f1c483cc5ab8');
+  });
+
+  it('renders A2E Custom Avatar Video', async () => {
+    await writeConfig({
+      providers: {
+        a2e: {
+          apiKey: 'a2e-test-key',
+          baseUrl: TEST_A2E_BASE_URL,
+        },
+      },
+    });
+
+    const mockAudioUrl = 'https://cdn.a2e.ai/tts/video_speech.wav';
+    const mockVideoUrl = 'https://cdn.a2e.ai/video/avatar_result.mp4';
+    const mockVideoBytes = Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70]);
+    const mockTaskId = '66f1234567890abcdef12345';
+
+    let pollCount = 0;
+
+    const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+      const urlStr = String(input);
+
+      if (urlStr === `${TEST_A2E_BASE_URL}/api/v1/video/send_tts`) {
+        expect(init?.method).toBe('POST');
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            data: mockAudioUrl,
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      }
+
+      if (urlStr === `${TEST_A2E_BASE_URL}/api/v1/video/generate`) {
+        expect(init?.method).toBe('POST');
+        expect(JSON.parse(String(init?.body))).toEqual({
+          anchor_id: '507f1f77bcf86cd799439011',
+          anchor_type: 1,
+          audioSrc: mockAudioUrl,
+        });
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            data: {
+              _id: mockTaskId,
+              status: 'sent',
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      }
+
+      if (urlStr === `${TEST_A2E_BASE_URL}/api/v1/video/list`) {
+        pollCount++;
+        return new Response(JSON.stringify({
+          code: 0,
+          data: {
+            list: [
+              {
+                _id: mockTaskId,
+                status: 'success',
+                result: mockVideoUrl,
+              },
+            ],
+          },
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+
+      if (urlStr === mockVideoUrl) {
+        return new Response(mockVideoBytes, {
+          status: 200,
+          headers: { 'content-type': 'video/mp4' },
+        });
+      }
+
+      throw new Error(`Unexpected fetch URL: ${urlStr}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await generateMedia({
+      projectRoot,
+      projectsRoot,
+      projectId: 'project-1',
+      surface: 'video',
+      model: 'a2e-avatar-video',
+      voice: 'custom:507f1f77bcf86cd799439011',
+      prompt: 'Generate an avatar video.',
+      output: 'a2e-video.mp4',
+    });
+
+    expect(result.providerId).toBe('a2e');
+    expect(result.providerNote).toContain('avatar=507f1f77bcf86cd799439011');
+    expect(pollCount).toBe(1);
+  });
+
   it('rejects media generation when API key is missing', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

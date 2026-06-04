@@ -677,6 +677,53 @@ describe('NewProjectPanel design system defaults', () => {
       }),
     );
   });
+
+  it('saves A2E video creation with a custom/cloned avatar when Custom avatar checkbox is enabled', () => {
+    const onCreate = vi.fn();
+    render(
+      <NewProjectPanel
+        skills={skills}
+        designSystems={designSystems}
+        defaultDesignSystemId="clay"
+        templates={[]}
+        onDeleteTemplate={vi.fn()}
+        promptTemplates={[]}
+        onCreate={onCreate}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Media' }));
+    fireEvent.click(screen.getByTestId('new-project-media-surface-video'));
+    fireEvent.change(screen.getByTestId('new-project-name'), {
+      target: { value: 'A2E Custom Video payload metadata' },
+    });
+    
+    // Select A2E video model
+    fireEvent.click(screen.getByTestId('model-picker-trigger'));
+    fireEvent.click(screen.getByTestId('model-picker-option-a2e-avatar-video'));
+
+    // Input A2E voice/avatar id
+    fireEvent.change(screen.getByPlaceholderText('Provider voice id, optional'), {
+      target: { value: 'my-custom-avatar-anchor-id' },
+    });
+
+    // Check Custom avatar toggle
+    fireEvent.click(screen.getByRole('button', { name: /Custom avatar/i }));
+
+    fireEvent.click(screen.getByTestId('create-project'));
+
+    expect(onCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'A2E Custom Video payload metadata',
+        designSystemId: null,
+        metadata: expect.objectContaining({
+          kind: 'video',
+          videoModel: 'a2e-avatar-video',
+          voice: 'custom:my-custom-avatar-anchor-id',
+        }),
+      }),
+    );
+  });
 });
 
 describe('NewProjectPanel folder import feedback', () => {

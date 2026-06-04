@@ -2334,14 +2334,28 @@ function MediaProjectOptions(props:
           </select>
         </label>
         {props.videoModel === 'a2e-avatar-video' ? (
-          <label className="newproj-label">
-            <span>{t('newproj.voiceLabel')}</span>
-            <input
-              value={props.voice}
-              placeholder={t('newproj.voicePlaceholder')}
-              onChange={(e) => props.onVoice(e.target.value)}
+          <div className="newproj-media-field">
+            <label className="newproj-label">
+              <span>{t('newproj.voiceLabel')}</span>
+              <input
+                value={props.voice.startsWith('custom:') ? props.voice.slice(7) : props.voice}
+                placeholder={t('newproj.voicePlaceholder')}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  props.onVoice(props.voice.startsWith('custom:') ? `custom:${val}` : val);
+                }}
+              />
+            </label>
+            <CompactToggle
+              label="Custom avatar"
+              hint="Check this if the ID belongs to a custom/cloned avatar instead of a system avatar"
+              checked={props.voice.startsWith('custom:')}
+              onChange={(checked) => {
+                const val = props.voice.startsWith('custom:') ? props.voice.slice(7) : props.voice;
+                props.onVoice(checked ? `custom:${val}` : val);
+              }}
             />
-          </label>
+          </div>
         ) : null}
       </div>
     );
@@ -2383,14 +2397,30 @@ function MediaProjectOptions(props:
         </select>
       </label>
       {props.audioKind === 'speech' ? (
-        <label className="newproj-label">
-          <span>{t('newproj.voiceLabel')}</span>
-          <input
-            value={props.voice}
-            placeholder={t('newproj.voicePlaceholder')}
-            onChange={(e) => props.onVoice(e.target.value)}
-          />
-        </label>
+        <div className="newproj-media-field">
+          <label className="newproj-label">
+            <span>{t('newproj.voiceLabel')}</span>
+            <input
+              value={props.voice.startsWith('custom:') ? props.voice.slice(7) : props.voice}
+              placeholder={t('newproj.voicePlaceholder')}
+              onChange={(e) => {
+                const val = e.target.value;
+                props.onVoice(props.voice.startsWith('custom:') ? `custom:${val}` : val);
+              }}
+            />
+          </label>
+          {props.audioModel === 'a2e-tts' ? (
+            <CompactToggle
+              label="Custom voice"
+              hint="Check this if the ID belongs to a custom/cloned voice instead of a system voice"
+              checked={props.voice.startsWith('custom:')}
+              onChange={(checked) => {
+                const val = props.voice.startsWith('custom:') ? props.voice.slice(7) : props.voice;
+                props.onVoice(checked ? `custom:${val}` : val);
+              }}
+            />
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

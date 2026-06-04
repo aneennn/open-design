@@ -3768,14 +3768,27 @@ async function renderA2ETTS(ctx: MediaContext, credentials: ProviderConfig): Pro
   const baseUrl = (credentials.baseUrl || 'https://video.a2e.ai').replace(/\/$/, '');
 
   const text = (ctx.prompt && ctx.prompt.trim()) || 'This is a test.';
-  const voiceId = (ctx.voice && ctx.voice.trim()) || '66dc3c1b7dc1f1c483cc5ab8';
+  let voiceId = (ctx.voice && ctx.voice.trim()) || '66dc3c1b7dc1f1c483cc5ab8';
+  let isCustomVoice = false;
+
+  if (voiceId.startsWith('custom:')) {
+    voiceId = voiceId.slice(7).trim();
+    isCustomVoice = true;
+  } else if (voiceId.startsWith('user:')) {
+    voiceId = voiceId.slice(5).trim();
+    isCustomVoice = true;
+  }
 
   const body: Record<string, any> = {
     msg: text,
     speechRate: 1.0,
   };
 
-  if (/^[a-fA-F0-9]{24}$/.test(voiceId)) {
+  if (isCustomVoice) {
+    body.user_voice_id = voiceId;
+    body.country = ctx.language || 'en';
+    body.region = 'US';
+  } else if (/^[a-fA-F0-9]{24}$/.test(voiceId)) {
     body.tts_id = voiceId;
   } else {
     body.user_voice_id = voiceId;
@@ -3841,9 +3854,18 @@ async function renderA2EVideo(ctx: MediaContext, credentials: ProviderConfig, on
   }
   const baseUrl = (credentials.baseUrl || 'https://video.a2e.ai').replace(/\/$/, '');
 
-  const anchorId = ctx.voice && ctx.voice.trim();
+  let anchorId = ctx.voice && ctx.voice.trim();
   if (!anchorId) {
     throw new Error('no A2E Avatar/Anchor ID provided — enter it in the project Voice field or configure it in media metadata');
+  }
+
+  let anchorType = 0;
+  if (anchorId.startsWith('custom:')) {
+    anchorId = anchorId.slice(7).trim();
+    anchorType = 1;
+  } else if (anchorId.startsWith('user:')) {
+    anchorId = anchorId.slice(5).trim();
+    anchorType = 1;
   }
 
   // Step 1: Generate TTS Audio first using the prompt
@@ -3888,7 +3910,7 @@ async function renderA2EVideo(ctx: MediaContext, credentials: ProviderConfig, on
   if (onProgress) onProgress('Submitting video generation task to A2E...');
   const generateBody = {
     anchor_id: anchorId,
-    anchor_type: 0,
+    anchor_type: anchorType,
     audioSrc: audioUrl,
   };
 
