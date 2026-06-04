@@ -63,7 +63,7 @@ import {
   findProvider,
   modelsForSurface,
 } from './media-models.js';
-import { assertAndFetchExternalAsset } from './connectionTest.js';
+import { assertAndFetchExternalAsset, assertExternalAssetUrl } from './connectionTest.js';
 import { resolveModelAlias, resolveProviderConfig } from './media-config.js';
 import {
   ensureProject,
