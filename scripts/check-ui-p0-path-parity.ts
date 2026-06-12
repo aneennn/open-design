@@ -40,20 +40,20 @@ async function main(): Promise<void> {
 }
 
 function extractUiP0WorkflowPaths(source: string): string[] {
-  const blockMatch = source.match(/pull_request:\n\s+paths:\n(?<block>(?:\s+- .+\n)+)/u);
+  const blockMatch = source.match(/pull_request:\r?\n\s+paths:\r?\n(?<block>(?:\s+- .+\r?\n)+)/u);
   const block = blockMatch?.groups?.block;
   if (!block) {
     throw new Error(`Unable to find pull_request.paths in ${uiP0WorkflowPath}.`);
   }
 
   return block
-    .split("\n")
+    .split(/\r?\n/)
     .map((line) => line.trim().match(/^-\s+(.+)$/u)?.[1]?.trim())
     .filter((value): value is string => Boolean(value));
 }
 
 function extractCiUiP0Rules(source: string): string[] {
-  const blockMatch = source.match(/^\s*if \[\[ (?<condition>[^\n]+) \]\]; then\n\s+ui_p0_pr_required=true$/mu);
+  const blockMatch = source.match(/^\s*if \[\[ (?<condition>[^\r\n]+) \]\]; then\r?\n\s+ui_p0_pr_required=true$/mu);
   const condition = blockMatch?.groups?.condition;
   if (!condition) {
     throw new Error(`Unable to find ui_p0_pr_required path condition in ${ciWorkflowPath}.`);
