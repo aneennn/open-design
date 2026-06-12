@@ -330,6 +330,7 @@ export function NewProjectPanel({
   const [audioDuration, setAudioDuration] = useState(10);
   const [voice, setVoice] = useState('');
   const [customVoice, setCustomVoice] = useState(false);
+  const [customAvatar, setCustomAvatar] = useState(false);
   // Per-surface curated prompt template the user picked. Tracked
   // independently for image vs video so flipping tabs doesn't clobber the
   // other one's pick. The body is editable in-line and the edited copy is
@@ -677,6 +678,7 @@ export function NewProjectPanel({
       audioDuration,
       voice,
       customVoice,
+      customAvatar,
       inspirationIds: inspirations,
       promptTemplate: promptTemplatePick,
     });
@@ -933,8 +935,8 @@ export function NewProjectPanel({
             onVideoAspect={setVideoAspect}
             onVideoLength={setVideoLength}
             onVoice={setVoice}
-            customVoice={customVoice}
-            onCustomVoice={setCustomVoice}
+            customVoice={customAvatar}
+            onCustomVoice={setCustomAvatar}
           />
         ) : null}
 
@@ -2356,8 +2358,8 @@ function MediaProjectOptions(props:
               />
             </label>
             <CompactToggle
-              label="Custom avatar"
-              hint="Check this if the ID belongs to a custom/cloned avatar instead of a system avatar"
+              label={t('newproj.customAvatarToggle')}
+              hint={t('newproj.customAvatarToggleHint')}
               checked={props.customVoice}
               onChange={props.onCustomVoice}
             />
@@ -2414,8 +2416,8 @@ function MediaProjectOptions(props:
           </label>
           {props.audioModel === 'a2e-tts' ? (
             <CompactToggle
-              label="Custom voice"
-              hint="Check this if the ID belongs to a custom/cloned voice instead of a system voice"
+              label={t('newproj.customVoiceToggle')}
+              hint={t('newproj.customVoiceToggleHint')}
               checked={props.customVoice}
               onChange={props.onCustomVoice}
             />
@@ -2759,6 +2761,7 @@ function buildMetadata(input: {
   audioDuration: number;
   voice: string;
   customVoice: boolean;
+  customAvatar: boolean;
   inspirationIds: string[];
   promptTemplate: PromptTemplatePick | null;
 }): ProjectMetadata {
@@ -2826,9 +2829,9 @@ function buildMetadata(input: {
     }
     if (input.mediaSurface === 'video') {
       const videoModel = input.videoModel.trim();
-      const finalVoice = (videoModel === 'a2e-avatar-video' && input.customVoice && input.voice.trim())
+      const finalVoice = (videoModel === 'a2e-avatar-video' && input.customAvatar && input.voice.trim())
         ? `custom:${input.voice.trim()}`
-        : input.voice.trim();
+        : (videoModel === 'a2e-avatar-video' ? input.voice.trim() : '');
       return {
         kind,
         ...(videoModel ? { videoModel } : {}),

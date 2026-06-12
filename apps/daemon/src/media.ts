@@ -3826,12 +3826,7 @@ async function renderA2ETTS(ctx: MediaContext, credentials: ProviderConfig): Pro
     throw new Error('A2E tts response missing data (audio URL)');
   }
 
-  const urlCheck = await assertExternalAssetUrl(audioUrl);
-  if (!urlCheck.ok) {
-    throw new Error(`A2E tts asset security check: ${urlCheck.error}`);
-  }
-
-  const audioResp = await fetch(audioUrl, withMediaRequestInit(ctx, { redirect: 'error' }));
+  const audioResp = await assertAndFetchExternalAsset(audioUrl, withMediaRequestInit(ctx));
   if (!audioResp.ok) {
     throw new Error(`A2E tts audio download ${audioResp.status}`);
   }
@@ -3946,14 +3941,18 @@ async function renderA2EVideo(ctx: MediaContext, credentials: ProviderConfig, on
 
   // Step 3: Poll task status via /api/v1/video/list
   const start = Date.now();
-  const maxPollMs = 10 * 60 * 1000; // max 10 minutes
+  const configuredMaxMs = Number(process.env.OD_A2E_VIDEO_MAX_POLL_MS);
+  const maxPollMs =
+    Number.isFinite(configuredMaxMs) && configuredMaxMs >= 60_000
+      ? configuredMaxMs
+      : 10 * 60 * 1000; // default: 10 minutes
   let pollIntervalMs = 5000; // start with 5 seconds
 
   if (onProgress) onProgress(`A2E video task ${taskId.slice(0, 8)} accepted; polling status...`);
 
   while (Date.now() - start < maxPollMs) {
     await sleep(pollIntervalMs);
-    // Exponential backoff up to 15 seconds
+    // Linear backoff up to 15 seconds
     pollIntervalMs = Math.min(pollIntervalMs + 2000, 15000);
 
     const listResp = await fetch(`${baseUrl}/api/v1/video/list`, withMediaRequestInit(ctx, {
@@ -4006,12 +4005,7 @@ async function renderA2EVideo(ctx: MediaContext, credentials: ProviderConfig, on
         throw new Error('A2E video task completed but missing result URL');
       }
 
-      const urlCheck = await assertExternalAssetUrl(resultUrl);
-      if (!urlCheck.ok) {
-        throw new Error(`A2E video asset security check: ${urlCheck.error}`);
-      }
-
-      const dlResp = await fetch(resultUrl, withMediaRequestInit(ctx, { redirect: 'error' }));
+      const dlResp = await assertAndFetchExternalAsset(resultUrl, withMediaRequestInit(ctx));
       if (!dlResp.ok) {
         throw new Error(`A2E video download failed ${dlResp.status}`);
       }
@@ -4033,7 +4027,11 @@ async function renderA2EVideo(ctx: MediaContext, credentials: ProviderConfig, on
     }
   }
 
-  throw new Error(`A2E video task timed out after 10 minutes`);
+  const elapsedMin = Math.round((Date.now() - start) / 60_000);
+  throw new Error(
+    `A2E video task timed out after ${elapsedMin} minute(s). ` +
+    `Raise OD_A2E_VIDEO_MAX_POLL_MS if your jobs legitimately need longer.`,
+  );
 }
 
 // ---------------------------------------------------------------------------
