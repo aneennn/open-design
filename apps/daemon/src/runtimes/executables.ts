@@ -17,6 +17,7 @@ const AGENT_BIN_ENV_KEYS = new Map<string, string>([
   ['amr', 'VELA_BIN'],
   ['aider', 'AIDER_BIN'],
   ['claude', 'CLAUDE_BIN'],
+  ['codebuddy', 'CODEBUDDY_BIN'],
   ['codex', 'CODEX_BIN'],
   ['copilot', 'COPILOT_BIN'],
   ['cursor-agent', 'CURSOR_AGENT_BIN'],
@@ -71,6 +72,16 @@ function userToolchainDirs() {
     env: homeOverride ? {} : process.env,
   });
   return cachedToolchainDirs;
+}
+
+// The user-level toolchain bin directories (Homebrew, ~/.local/bin, ~/.bun/bin,
+// version-manager node dirs, npm prefixes, …) that binary *resolution* searches
+// beyond process.env.PATH. Exposed so the spawn env can append the same dirs:
+// a binary can resolve here yet fail to *execute* if its shebang interpreter
+// (e.g. `#!/usr/bin/env bun`) lives in one of these dirs and the spawn PATH
+// doesn't include it. Keeping resolution and spawn PATH symmetric fixes that.
+export function userToolchainBinDirs(): string[] {
+  return userToolchainDirs();
 }
 
 function resolvePathDirs() {

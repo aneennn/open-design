@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createTabToTracking } from '@open-design/contracts/analytics';
+import { isOpenDesignHostAvailable, pickHostWorkingDir } from '@open-design/host';
 import type { OpenDesignHostProjectImportSuccess } from '@open-design/host';
 import { useAnalytics } from '../analytics/provider';
 import {
@@ -17,7 +18,7 @@ import type {
 
 import { useT } from '../i18n';
 import type { Dict } from '../i18n/types';
-import { fetchPromptTemplate } from '../providers/registry';
+import { fetchPromptTemplate, openFolderDialog } from '../providers/registry';
 import { isStoredMediaProviderEntryPresent } from '../state/config';
 import { isMediaProviderPickerReady } from '../media/provider-readiness';
 import type {
@@ -116,6 +117,7 @@ export interface CreateInput {
   skillId: string | null;
   designSystemId: string | null;
   metadata: ProjectMetadata;
+  userWorkingDirToken?: string;
 }
 
 export type ImportClaudeDesignOutcome =
@@ -235,6 +237,10 @@ export function defaultDesignSystemSelection(
     : [];
 }
 
+function isSelectableProjectDesignSystem(system: DesignSystemSummary): boolean {
+  return system.status !== 'draft';
+}
+
 export function buildDesignSystemCreateSelection(
   showDesignSystemPicker: boolean,
   selectedIds: string[],
@@ -272,6 +278,12 @@ export function NewProjectPanel({
   const [importZipError, setImportZipError] = useState<
     { message: string; details?: string } | null
   >(null);
+  const [workingDir, setWorkingDir] = useState<string | null>(null);
+  const [workingDirToken, setWorkingDirToken] = useState<string | null>(null);
+  const [workingDirPicking, setWorkingDirPicking] = useState(false);
+  const [workingDirError, setWorkingDirError] = useState<
+    { message: string; details?: string } | null
+  >(null);
   const [tab, setTab] = useState<CreateTab>(initialTab);
   // P0 analytics — fire surface_view once per (panel mount, tab) pair so the
   // funnel sees both initial open and tab switches without double-counting on
@@ -298,9 +310,13 @@ export function NewProjectPanel({
   // Design-system selection is now an *array* internally so the same
   // component can drive both single-select and multi-select modes without
   // duplicating state. Single-select coerces to length 0/1.
+  const selectableDesignSystems = useMemo(
+    () => designSystems.filter(isSelectableProjectDesignSystem),
+    [designSystems],
+  );
   const initialDefaultDsSelection = useMemo(
-    () => defaultDesignSystemSelection(defaultDesignSystemId, designSystems),
-    [defaultDesignSystemId, designSystems],
+    () => defaultDesignSystemSelection(defaultDesignSystemId, selectableDesignSystems),
+    [defaultDesignSystemId, selectableDesignSystems],
   );
   const [selectedDsIds, setSelectedDsIds] = useState<string[]>(
     () => initialDefaultDsSelection,
@@ -402,7 +418,7 @@ export function NewProjectPanel({
     if (!primary) return;
     if (autoSelectFiredForRef.current === primary) return;
     autoSelectFiredForRef.current = primary;
-    const picked = designSystems.find((d) => d.id === primary);
+    const picked = selectableDesignSystems.find((d) => d.id === primary);
     trackDesignSystemApplyResult(analytics.track, {
       page_name: 'home',
       area: 'design_system_picker',
@@ -421,9 +437,9 @@ export function NewProjectPanel({
     });
   }, [
     analytics.track,
-    designSystems,
     dsSelectionTouched,
     initialDefaultDsSelection,
+    selectableDesignSystems,
     showDesignSystemPicker,
     tab,
   ]);
@@ -706,9 +722,39 @@ export function NewProjectPanel({
       metadata: {
         ...metadata,
         nameSource: trimmedName ? 'user' : 'generated',
+        ...(workingDir ? { userWorkingDir: workingDir } : {}),
       },
+      ...(workingDirToken ? { userWorkingDirToken: workingDirToken } : {}),
       requestId,
     });
+  }
+
+  async function handlePickWorkingDir() {
+    if (workingDirPicking) return;
+    setWorkingDirPicking(true);
+    setWorkingDirError(null);
+    try {
+      if (isOpenDesignHostAvailable()) {
+        const result = await pickHostWorkingDir();
+        if (result.ok) {
+          setWorkingDir(result.baseDir);
+          setWorkingDirToken(result.token);
+          return;
+        }
+        if ('canceled' in result && result.canceled) return;
+        setWorkingDirError({
+          message: `Couldn't open the folder picker (${'reason' in result ? result.reason : 'host unavailable'}). Please update Open Design and try again.`,
+        });
+        return;
+      }
+      const picked = await openFolderDialog();
+      if (picked) {
+        setWorkingDir(picked);
+        setWorkingDirToken(null);
+      }
+    } finally {
+      setWorkingDirPicking(false);
+    }
   }
 
   async function handleImportPicked(ev: React.ChangeEvent<HTMLInputElement>) {
@@ -807,9 +853,42 @@ export function NewProjectPanel({
           />
         </div>
 
+        <div className="newproj-working-dir-row">
+          <button
+            type="button"
+            className={`ghost newproj-working-dir od-tooltip${workingDir ? ' picked' : ''}`}
+            onClick={() => void handlePickWorkingDir()}
+            disabled={workingDirPicking}
+            title={workingDir ?? t('workingDirPicker.homeTitle')}
+            data-tooltip={workingDir ?? t('workingDirPicker.homeTitle')}
+          >
+            <Icon name="folder" size={13} />
+            <span>
+              {workingDirPicking
+                ? t('workingDirPicker.processing')
+                : workingDir
+                  ? displayFolderName(workingDir)
+                  : t('workingDirPicker.select')}
+            </span>
+          </button>
+          {workingDir ? (
+            <button
+              type="button"
+              className="newproj-working-dir-clear"
+              onClick={() => {
+                setWorkingDir(null);
+                setWorkingDirToken(null);
+              }}
+              aria-label={t('workingDirPicker.clearAria')}
+            >
+              <Icon name="close" size={10} />
+            </button>
+          ) : null}
+        </div>
+
         {showDesignSystemPicker ? (
           <DesignSystemPicker
-            designSystems={designSystems}
+            designSystems={selectableDesignSystems}
             defaultDesignSystemId={defaultDesignSystemId}
             selectedIds={selectedDsIds}
             multi={dsMulti}
@@ -1039,8 +1118,20 @@ export function NewProjectPanel({
           onDismiss={folderImport.clearError}
         />
       ) : null}
+      {workingDirError ? (
+        <Toast
+          message={workingDirError.message}
+          details={workingDirError.details ?? null}
+          ttlMs={6000}
+          onDismiss={() => setWorkingDirError(null)}
+        />
+      ) : null}
     </div>
   );
+}
+
+function displayFolderName(path: string): string {
+  return path.split(/[/\\]/).filter(Boolean).pop() ?? path;
 }
 
 function PlatformPicker({
@@ -1091,7 +1182,7 @@ function PlatformPicker({
 
   return (
     <div
-      className="newproj-section ds-picker platform-picker"
+      className={`newproj-section ds-picker platform-picker${open ? ' open' : ''}`}
       ref={wrapRef}
     >
       <label className="newproj-label">Target platforms</label>
@@ -2030,7 +2121,11 @@ function DesignSystemPicker({
   }
 
   return (
-    <div className="newproj-section ds-picker" data-testid="design-system-picker" ref={wrapRef}>
+    <div
+      className={`newproj-section ds-picker${open ? ' open' : ''}`}
+      data-testid="design-system-picker"
+      ref={wrapRef}
+    >
       <label className="newproj-label">{t('newproj.designSystem')}</label>
       <button
         type="button"
