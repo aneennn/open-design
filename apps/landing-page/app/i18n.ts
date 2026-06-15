@@ -6796,6 +6796,21 @@ export function localeFromPath(pathname = '/'): LandingLocaleCode {
   return stripLocaleFromPath(pathname).locale;
 }
 
+/**
+ * Stable, locale-independent `page_name` for analytics (the 埋点文档 2.0
+ * page_name/area/element triplet). The marketing trackers are injected on
+ * every page, so each must report which page it is rather than a hardcoded
+ * value. The home page is `landing_home`; every other route flattens its
+ * locale-stripped path segments (e.g. `/zh/solutions/prototype/` →
+ * `solutions_prototype`, `/download/` → `download`).
+ */
+export function pageNameFromPath(pathname = '/'): string {
+  const { pathname: localPath } = stripLocaleFromPath(pathname);
+  const segments = localPath.split('/').filter(Boolean);
+  if (segments.length === 0) return 'landing_home';
+  return segments.join('_').toLowerCase().replace(/[^a-z0-9_]+/g, '_');
+}
+
 export function localizedHref(
   href: string,
   locale: LandingLocaleCode,
@@ -6829,6 +6844,7 @@ export function localizedHref(
 export function getHeaderLocaleSwitcher(
   locale: LandingLocaleCode,
   pathname = '/',
+  opts: { canonicalOnly?: boolean } = {},
 ): {
   label: string;
   prefix: string;
@@ -6842,13 +6858,18 @@ export function getHeaderLocaleSwitcher(
 } {
   const localeDef = getLocaleDefinition(locale);
   const topbar = getCommonCopy(locale).topbar;
+  // Canonical-only pages (e.g. plugin detail pages, which are not generated
+  // per-locale to avoid a page explosion) have no localized variant, so every
+  // option must point at the single canonical URL. Prefixing it with a locale
+  // would link to a non-existent `/<locale>/...` page and 404.
+  const canonicalPath = stripLocaleFromPath(pathname).pathname;
   return {
     label: topbar.languageSwitcherLabel,
     prefix: topbar.languageSwitcherPrefix ?? 'Lang',
     shortLabel: localeDef.shortLabel,
     options: LANDING_LOCALES.map((entry) => ({
       code: entry.code,
-      href: localePath(entry.code, pathname),
+      href: opts.canonicalOnly ? canonicalPath : localePath(entry.code, pathname),
       htmlLang: entry.htmlLang,
       label: entry.label,
     })),

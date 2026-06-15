@@ -95,6 +95,7 @@ export interface HeaderProps {
     | 'resources'
     | 'blog'
     | 'tutorials'
+    | 'download'
     | 'community';
   /**
    * Live counts from the Markdown catalogs. Required so we can never
@@ -340,7 +341,10 @@ export function Header({
               <a
                 href={href('/blog/')}
                 className={
-                  active === 'resources' || active === 'tutorials' || active === 'blog'
+                  active === 'resources' ||
+                  active === 'blog' ||
+                  active === 'tutorials' ||
+                  active === 'download'
                     ? 'is-active'
                     : undefined
                 }
@@ -374,7 +378,10 @@ export function Header({
                     main dropped it from Resources until the subscribe page
                     ships. */}
                 <li>
-                  <a href={href('/download/')}>
+                  <a
+                    href={href('/download/')}
+                    className={active === 'download' ? 'is-active' : undefined}
+                  >
                     <span className='dropdown-name'>
                       {productMenuCopy.resourceItems.download}
                     </span>
@@ -398,21 +405,21 @@ export function Header({
               </a>
               <ul className='nav-dropdown' aria-label={productMenuCopy.community}>
                 <li>
-                  <a href='/community/#contributors'>
+                  <a href='/community/contributors/'>
                     <span className='dropdown-name'>
                       {productMenuCopy.communityItems.contributors}
                     </span>
                   </a>
                 </li>
                 <li>
-                  <a href='/community/#ambassadors'>
+                  <a href='/community/ambassadors/'>
                     <span className='dropdown-name'>
                       {productMenuCopy.communityItems.ambassadors}
                     </span>
                   </a>
                 </li>
                 <li>
-                  <a href='/community/#moderators'>
+                  <a href='/community/moderators/'>
                     <span className='dropdown-name'>
                       {productMenuCopy.communityItems.moderators}
                     </span>
@@ -501,6 +508,7 @@ export function Header({
             title={headerCopy.downloadTitle}
             data-download-cta
             data-download-page
+            data-download-placement='nav'
           >
             {headerCopy.download}
           </a>
