@@ -345,7 +345,8 @@ export function NewProjectPanel({
   const [audioKind, setAudioKind] = useState<AudioKind>('speech');
   const [audioModel, setAudioModel] = useState(DEFAULT_AUDIO_MODEL.speech);
   const [audioDuration, setAudioDuration] = useState(10);
-  const [voice, setVoice] = useState('');
+  const [avatarId, setAvatarId] = useState('');
+  const [voiceId, setVoiceId] = useState('');
   const [customVoice, setCustomVoice] = useState(false);
   const [customAvatar, setCustomAvatar] = useState(false);
   // Per-surface curated prompt template the user picked. Tracked
@@ -693,7 +694,8 @@ export function NewProjectPanel({
       audioKind,
       audioModel,
       audioDuration,
-      voice,
+      avatarId,
+      voiceId,
       customVoice,
       customAvatar,
       inspirationIds: inspirations,
@@ -1009,12 +1011,12 @@ export function NewProjectPanel({
             videoModel={videoModel}
             videoAspect={videoAspect}
             videoLength={videoLength}
-            voice={voice}
+            voice={avatarId}
             mediaProviders={mediaProviders}
             onVideoModel={handleVideoModel}
             onVideoAspect={setVideoAspect}
             onVideoLength={setVideoLength}
-            onVoice={setVoice}
+            onVoice={setAvatarId}
             customVoice={customAvatar}
             onCustomVoice={setCustomAvatar}
           />
@@ -1026,7 +1028,7 @@ export function NewProjectPanel({
             audioKind={audioKind}
             audioModel={audioModel}
             audioDuration={audioDuration}
-            voice={voice}
+            voice={voiceId}
             mediaProviders={mediaProviders}
             onAudioKind={(kind) => {
               setAudioKind(kind);
@@ -1037,7 +1039,7 @@ export function NewProjectPanel({
             }}
             onAudioModel={setAudioModel}
             onAudioDuration={setAudioDuration}
-            onVoice={setVoice}
+            onVoice={setVoiceId}
             customVoice={customVoice}
             onCustomVoice={setCustomVoice}
           />
@@ -2853,7 +2855,8 @@ function buildMetadata(input: {
   audioKind: AudioKind;
   audioModel: string;
   audioDuration: number;
-  voice: string;
+  avatarId: string;
+  voiceId: string;
   customVoice: boolean;
   customAvatar: boolean;
   inspirationIds: string[];
@@ -2923,9 +2926,9 @@ function buildMetadata(input: {
     }
     if (input.mediaSurface === 'video') {
       const videoModel = input.videoModel.trim();
-      const finalVoice = (videoModel === 'a2e-avatar-video' && input.customAvatar && input.voice.trim())
-        ? `custom:${input.voice.trim()}`
-        : (videoModel === 'a2e-avatar-video' ? input.voice.trim() : '');
+      const finalVoice = (videoModel === 'a2e-avatar-video' && input.customAvatar && input.avatarId.trim())
+        ? `custom:${input.avatarId.trim()}`
+        : (videoModel === 'a2e-avatar-video' ? input.avatarId.trim() : '');
       return {
         kind,
         ...(videoModel ? { videoModel } : {}),
@@ -2937,9 +2940,9 @@ function buildMetadata(input: {
       };
     }
     const audioModel = input.audioModel.trim();
-    const finalVoice = (audioModel === 'a2e-tts' && input.customVoice && input.voice.trim())
-      ? `custom:${input.voice.trim()}`
-      : input.voice.trim();
+    const finalVoice = (audioModel === 'a2e-tts' && input.customVoice && input.voiceId.trim())
+      ? `custom:${input.voiceId.trim()}`
+      : input.voiceId.trim();
     return {
       kind,
       audioKind: input.audioKind,
