@@ -28,6 +28,7 @@
  * either URL shape.
  */
 import type { LandingLocaleCode } from '../i18n';
+import { pluginDetailL10n } from './plugin-detail-l10n';
 const DEFAULT_LOCALE: LandingLocaleCode = 'en';
 
 export interface PluginCategoryCopy {
@@ -65,6 +66,69 @@ export interface PluginsCopy {
   systemsLabel: string;
   systemsHeading: (n: number) => string;
   systemsLead: string;
+  systemsMetaTitle: (n: number) => string;
+  systemsMetaDescription: string;
+  systemsAboutHead: string;
+  systemsAboutBody: string;
+  /**
+   * "Every system is a DESIGN.md file" explainer — targets the emerging
+   * DESIGN.md / design.md keyword cluster (open markdown design-system
+   * format). English baseline; untranslated locales fall back via getPluginsCopy.
+   */
+  systemsMdHead: string;
+  systemsMdBody: ReadonlyArray<string>;
+  systemsMdSnippet: string;
+  systemsMdSnippetCaption: string;
+  systemsMdSteps: ReadonlyArray<{ title: string; body: string }>;
+  systemsMdSpecNote: string;
+  /** FAQ block + FAQPage schema on /plugins/systems/. */
+  systemsFaqHead: string;
+  systemsFaq: (n: number) => ReadonlyArray<{ q: string; a: string }>;
+  /**
+   * Design-token spec panel on a design-system detail page — renders the
+   * system's structured `design-tokens.json` (the canonical TOKEN_SCHEMA
+   * contract). `tokenGroupLabels` is keyed by the TokenGroupId ids from
+   * `_lib/system-tokens.ts` and deep-merged in getPluginsCopy for per-key
+   * fallback.
+   */
+  tokensHead: string;
+  tokensLead: (n: number) => string;
+  tokenGroupLabels: Record<string, string>;
+  /** In-page anchor-nav labels on a design-system detail page. */
+  detailTocLabel: string;
+  detailTocPreview: string;
+  detailTocTokens: string;
+  detailTocGuide: string;
+  detailTocRelated: string;
+  /**
+   * "See it in context" scenario showcase — the system's tokens applied to
+   * different artifact kinds (web / app / slides / poster). `scenarioLabels`
+   * is keyed by scenario id and deep-merged in getPluginsCopy.
+   */
+  scenariosHead: string;
+  scenariosLead: string;
+  scenarioLabels: Record<string, string>;
+  /** Lowercase category suffix appended to design-system detail titles/H1 (e.g. "design system"). */
+  detailSystemLabel: string;
+  /** Localized tail of the design-system detail <title> (after "<Brand> design system — "). */
+  detailSystemTitleSuffix: string;
+  /** Localized meta keywords for a design-system detail page. */
+  detailSystemKeywords: (name: string) => string;
+  /** Placeholder for the client-side catalog filter on templates / systems. */
+  searchPlaceholder: string;
+  /** Shown when a catalog filter matches nothing. */
+  searchNoResults: string;
+  /** Caption under the design-system mock-UI live preview. */
+  systemPreviewCaption: (name: string) => string;
+  /** CTA on a system catalog card, drilling into the detail page. */
+  systemCardCta: string;
+  /** "Contribute a plugin" callout shown on every plugins page. */
+  contributeTitle: string;
+  contributeBody: string;
+  /** Primary CTA — open a pull request directly. */
+  contributeCta: string;
+  /** Secondary CTA — open an issue (lower barrier than a PR). */
+  contributeIssueCta: string;
 
   craftLabel: string;
   craftHeading: (n: number) => string;
@@ -181,9 +245,125 @@ const en: PluginsCopy = {
     'Skills the agent loads mid-task — copywriting, color theory, creative direction, brainstorming. There’s no static demo because the outcome depends on your input, so each detail page reads like a brief: title, description, triggers, attribution.',
 
   systemsLabel: 'Plugins · Systems',
-  systemsHeading: (n) => `${n} design systems.`,
+  systemsHeading: () => 'Design systems, ready for your agent',
   systemsLead:
-    'Brand-anchored design systems plugins can adopt via `od.craft.requires`. Each ships its own palette, typography, motion, and voice; snap a project to a system and every plugin output inherits the same identity.',
+    'Browse real-world design system examples — brand-grade palette, typography, motion and voice your coding agent can snap any project to. Every system is open-source and runs with Claude, Codex, Cursor and more.',
+  systemsMetaTitle: (n) => `Design System Examples — ${n} Open-Source Design Systems | Open Design`,
+  systemsMetaDescription:
+    'Browse design system examples your coding agent can apply automatically — brand-grade palette, typography, motion and voice from real-world design systems. Open-source, BYOK, works with Claude, Codex and Cursor.',
+  systemsAboutHead: 'What is a design system?',
+  systemsAboutBody:
+    'A design system is a reusable set of brand foundations — color palette, typography, spacing, motion and voice — that keeps every screen consistent. In Open Design each design system is a plugin: snap a project to one and your coding agent inherits the palette, type, motion and voice automatically, so everything it generates stays on-brand.',
+  systemsMdHead: 'Every system is a DESIGN.md file',
+  systemsMdBody: [
+    'Each design system here is a single DESIGN.md — a human- and agent-readable markdown spec that captures the brand’s visual theme, color roles, typography scale, and interaction language. It lives in your repo, versions in git, and travels with your project.',
+    'Point Claude Code, Cursor, or any coding agent at the file and every component, page, and asset it generates inherits the same identity. DESIGN.md is an open, Apache-2.0 format; Open Design is the open-source, local-first library and tooling built around it.',
+  ],
+  systemsMdSnippet: `# Design System Inspired by Linear
+
+> Category: Productivity
+> Focused, low-chrome workspace. Inter, tight grid, restrained color.
+
+## 1. Visual Theme & Atmosphere
+A calm, dense product surface where typography and spacing
+carry the hierarchy and color is used sparingly for intent.
+
+## 2. Color Palette & Roles
+### Primary
+- **Ink** (\`#0d0e10\`): Primary text and dark surfaces.
+- **Violet** (\`#5e6ad2\`): Action and focus accent.
+- **Surface** (\`#f4f5f8\`): Light canvas for content blocks.`,
+  systemsMdSnippetCaption: 'A DESIGN.md excerpt',
+  systemsMdSteps: [
+    {
+      title: 'Pick a system',
+      body: 'Browse the library above and open any system to read its full DESIGN.md — palette, type, motion, and voice.',
+    },
+    {
+      title: 'Drop it in your project',
+      body: 'Save the DESIGN.md to your repo root. It’s plain markdown — no build step, no account, no export.',
+    },
+    {
+      title: 'Point your agent at it',
+      body: 'Tell Claude Code or Cursor to follow DESIGN.md, and every output stays consistent with the brand.',
+    },
+  ],
+  systemsMdSpecNote:
+    'DESIGN.md is an open format (Apache-2.0). Open Design’s systems are free to read, fork, and contribute to on GitHub.',
+  systemsFaqHead: 'Frequently asked questions',
+  systemsFaq: (n) => [
+    {
+      q: 'What is a design system?',
+      a: 'A design system is a single source of truth for a brand’s visual language — palette, typography, spacing, motion, and tone — so every screen and asset feels like one coherent product.',
+    },
+    {
+      q: 'What is a DESIGN.md file?',
+      a: 'DESIGN.md is an open, markdown-based format for describing a design system in a way both people and AI coding agents can read. It captures color roles, type scale, and interaction patterns as plain text you keep in your repo.',
+    },
+    {
+      q: 'How do I use a DESIGN.md with Claude Code or Cursor?',
+      a: 'Save the file to your project root and tell your agent to follow it. Open Design can also snap a project to a system so every plugin output inherits the same identity automatically.',
+    },
+    {
+      q: 'Are these design systems free?',
+      a: 'Yes. Every system here is open source and free to read, download, fork, and contribute to. Open Design itself is Apache-2.0 and local-first.',
+    },
+    {
+      q: 'How many design systems are there?',
+      a: `${n} and counting, spanning consumer tech, editorial, and experimental styles. New systems land regularly, and you can contribute your own on GitHub.`,
+    },
+    {
+      q: 'Can I create my own DESIGN.md?',
+      a: 'Yes — author a DESIGN.md by hand, or let Open Design generate one from a reference site, then reuse it across every project and agent.',
+    },
+  ],
+  tokensHead: 'Design tokens',
+  tokensLead: (n) =>
+    `${n} tokens conforming to the Open Design token contract — the same structured palette, type, spacing, and motion values your agent reads to theme any artifact.`,
+  tokenGroupLabels: {
+    surface: 'Surface',
+    text: 'Text',
+    border: 'Border',
+    accent: 'Accent',
+    semantic: 'Semantic',
+    fonts: 'Typography',
+    type: 'Type scale',
+    spacing: 'Spacing',
+    radius: 'Radius',
+    elevation: 'Elevation',
+    focus: 'Focus',
+    motion: 'Motion',
+    layout: 'Layout',
+    other: 'Other',
+  },
+  detailTocLabel: 'On this page',
+  detailTocPreview: 'In context',
+  detailTocTokens: 'Design tokens',
+  detailTocGuide: 'DESIGN.md guide',
+  detailTocRelated: 'Related',
+  scenariosHead: 'See it in context',
+  scenariosLead:
+    'The same design tokens applied across artifact kinds — a website, an app, a slide, a poster. Original mocks re-skinned with this system, not screenshots.',
+  scenarioLabels: {
+    web: 'Website',
+    app: 'App',
+    slides: 'Slides',
+    poster: 'Poster',
+  },
+  detailSystemLabel: 'design system',
+  detailSystemTitleSuffix: 'palette, typography & tokens for your agent · Open Design',
+  detailSystemKeywords: (name) =>
+    `${name} design system, ${name} DESIGN.md, ${name} design tokens, design system example, open-source design system`,
+  searchPlaceholder: 'Search by name or keyword…',
+  searchNoResults: 'No matches. Try a different keyword.',
+  systemPreviewCaption: (name) =>
+    `Mock UI styled entirely with ${name}'s design tokens — a live preview of the design system, not a screenshot.`,
+  systemCardCta: 'View design system →',
+  contributeTitle: 'Built a plugin? Ship it to the catalogue.',
+  contributeBody:
+    'Every template, skill, and design system here is community-extensible. Open a pull request to add yours directly, or open an issue to propose one — merged contributions show up in this catalogue and in the product automatically.',
+  contributeCta: 'Open a pull request →',
+  contributeIssueCta: 'Or open an issue →',
 
   craftLabel: 'Plugins · Craft',
   craftHeading: (n) => `${n} craft principles.`,
@@ -375,9 +555,26 @@ const overrides: Partial<Record<LandingLocaleCode, Partial<PluginsCopy>>> = {
     skillsLead:
       'agent 在任务中加载的技能——文案、配色、创意指导、头脑风暴。没有静态 demo，输出取决于你的输入，所以每个详情页像一份简报：标题、描述、触发词、出处。',
     systemsLabel: '插件 · 设计系统',
-    systemsHeading: (n) => `${n} 个设计系统。`,
+    systemsHeading: () => '为你的 agent 准备的设计系统',
     systemsLead:
-      '插件可通过 `od.craft.requires` 采用的品牌设计系统。每个系统自带色板、字体、动效与文风；把项目绑到某个系统，所有插件输出都会继承同一身份。',
+      '浏览真实世界的设计系统范例——品牌级的色板、字体、动效与文风，你的 coding agent 可一键套用到任何项目。每个系统都开源，支持 Claude、Codex、Cursor 等。',
+    systemsMetaTitle: (n) => `设计系统范例 — ${n} 个开源设计系统 | Open Design`,
+    systemsMetaDescription:
+      '浏览你的 coding agent 可自动套用的设计系统范例——来自真实品牌的色板、字体、动效与文风。开源、BYOK，支持 Claude、Codex、Cursor。',
+    systemsAboutHead: '什么是设计系统？',
+    systemsAboutBody:
+      '设计系统是一套可复用的品牌基础——色板、字体、间距、动效与文风——让每个界面保持一致。在 Open Design 中，每个设计系统都是一个插件：把项目绑到某个系统，你的 coding agent 会自动继承它的色板、字体、动效与文风，产出始终贴合品牌。',
+    detailSystemLabel: '设计系统',
+    searchPlaceholder: '按名称或关键词搜索…',
+    searchNoResults: '没有匹配项，换个关键词试试。',
+    systemPreviewCaption: (name) =>
+      `用 ${name} 设计系统 token 渲染的示例界面 —— 设计效果实时预览，非截图。`,
+    systemCardCta: '查看设计系统 →',
+    contributeTitle: '做了一个 plugin？把它上架到目录。',
+    contributeBody:
+      '这里的每个模板、skill、设计系统都可由社区扩展。直接提一个 pull request 加上你的，或者提个 issue 提议——合并后会自动出现在这个目录和产品里。',
+    contributeCta: '提交 Pull Request →',
+    contributeIssueCta: '或提个 Issue →',
     craftLabel: '插件 · 工艺',
     craftHeading: (n) => `${n} 条工艺规则。`,
     craftLead:
@@ -486,8 +683,23 @@ const overrides: Partial<Record<LandingLocaleCode, Partial<PluginsCopy>>> = {
     skillsHeading: (n) => `${n} 個指令技能。`,
     skillsLead: 'agent 任務中載入的技能——文案、色彩、創意指導、發想。沒有靜態 demo，因為產出取決於你的輸入；每個詳情頁讀起來像一份 brief：標題、描述、觸發條件、署名。',
     systemsLabel: '外掛 · 設計系統',
-    systemsHeading: (n) => `${n} 個設計系統。`,
-    systemsLead: '外掛可透過 `od.craft.requires` 採用的品牌錨定設計系統。每一個都自帶色票、字體、動效與語氣；綁定一個專案到系統，所有外掛產出都繼承同一識別。',
+    systemsHeading: () => '為你的 agent 準備的設計系統',
+    systemsLead: '瀏覽真實世界的設計系統範例——品牌級的色票、字體、動效與語氣，你的 coding agent 可一鍵套用到任何專案。每個系統都開源，支援 Claude、Codex、Cursor 等。',
+    systemsMetaTitle: (n) => `設計系統範例 — ${n} 個開源設計系統 | Open Design`,
+    systemsMetaDescription: '瀏覽你的 coding agent 可自動套用的設計系統範例——來自真實品牌的色票、字體、動效與語氣。開源、BYOK，支援 Claude、Codex、Cursor。',
+    systemsAboutHead: '什麼是設計系統？',
+    systemsAboutBody: '設計系統是一套可重用的品牌基礎——色票、字體、間距、動效與語氣——讓每個介面保持一致。在 Open Design 中，每個設計系統都是一個外掛：綁定專案到某個系統，你的 coding agent 會自動繼承它的色票、字體、動效與語氣，產出始終貼合品牌。',
+    detailSystemLabel: '設計系統',
+    searchPlaceholder: '依名稱或關鍵字搜尋…',
+    searchNoResults: '沒有相符項目，換個關鍵字試試。',
+    systemPreviewCaption: (name) =>
+      `用 ${name} 設計系統 token 渲染的範例介面 —— 設計效果即時預覽，非截圖。`,
+    systemCardCta: '檢視設計系統 →',
+    contributeTitle: '做了一個 plugin？把它上架到目錄。',
+    contributeBody:
+      '這裡的每個範本、skill、設計系統都可由社群擴充。直接提一個 pull request 加上你的，或者提個 issue 提議——合併後會自動出現在這個目錄和產品裡。',
+    contributeCta: '提交 Pull Request →',
+    contributeIssueCta: '或提個 Issue →',
     craftLabel: '外掛 · 工藝',
     craftHeading: (n) => `${n} 條工藝原則。`,
     craftLead: '與品牌無關的工藝規則——可達性、RTL、動效曲線、攝影倫理。技能透過 `od.craft.requires` opt-in，外掛自動繼承相應嚴謹度。',
@@ -2857,13 +3069,19 @@ const overrides: Partial<Record<LandingLocaleCode, Partial<PluginsCopy>>> = {
  */
 export function getPluginsCopy(locale: LandingLocaleCode): PluginsCopy {
   if (locale === DEFAULT_LOCALE) return en;
-  const partial = overrides[locale];
-  if (!partial) return en;
+  const base = overrides[locale];
+  const detail = pluginDetailL10n[locale];
+  if (!base && !detail) return en;
+  // Detail-page chrome (plugin-detail-l10n) wins over the original overrides
+  // when both define a key; English (en) fills anything neither provides.
+  const partial = { ...(base ?? {}), ...(detail ?? {}) };
   return {
     ...en,
     ...partial,
     category: { ...en.category, ...(partial.category ?? {}) },
     subcategory: { ...en.subcategory, ...(partial.subcategory ?? {}) },
     detailBucketLabel: { ...en.detailBucketLabel, ...(partial.detailBucketLabel ?? {}) },
+    tokenGroupLabels: { ...en.tokenGroupLabels, ...(partial.tokenGroupLabels ?? {}) },
+    scenarioLabels: { ...en.scenarioLabels, ...(partial.scenarioLabels ?? {}) },
   };
 }
