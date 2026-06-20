@@ -4163,20 +4163,14 @@ async function renderA2EVideo(ctx: MediaContext, credentials: ProviderConfig, on
     // Linear backoff up to 15 seconds
     pollIntervalMs = Math.min(pollIntervalMs + 2000, 15000);
 
-    let listResp: Response;
-    try {
-      listResp = await fetch(`${baseUrl}/api/v1/video/list`, withMediaRequestInit(ctx, {
-        method: 'POST',
-        headers: {
-          'authorization': `Bearer ${credentials.apiKey}`,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({}),
-      }));
-    } catch (networkErr) {
-      // Transient network failure (DNS, TCP reset, etc.) — safe to retry.
-      continue;
-    }
+    const listResp = await fetch(`${baseUrl}/api/v1/video/list`, withMediaRequestInit(ctx, {
+      method: 'POST',
+      headers: {
+        'authorization': `Bearer ${credentials.apiKey}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    }));
 
     // Non-2xx from the list endpoint is a persistent server-side error
     // (e.g. 401 bad credentials, 500 upstream failure). Surface it

@@ -520,4 +520,56 @@ describe('a2e media generation', () => {
       }),
     ).rejects.toThrow('A2E video poll API error 401: quota exceeded');
   });
+
+  it('fails fast when the A2E list poll fetch rejects (e.g. transport-level failure)', async () => {
+    // Regression test: the old loop swallowed fetch rejections and continued to retry,
+    // causing a 10-minute hang.
+    // After the fix, the fetch rejection propagates immediately.
+    await writeConfig({
+      providers: {
+        a2e: {
+          apiKey: 'test-key',
+          baseUrl: TEST_A2E_BASE_URL,
+        },
+      },
+    });
+
+    const mockAudioUrl = 'https://cdn.a2e.ai/tts/video_speech3.wav';
+    const mockTaskId = '66f1234567890abcdef77777';
+
+    const fetchMock = vi.fn(async (input: unknown, _init?: RequestInit) => {
+      const urlStr = String(input);
+      if (urlStr === `${TEST_A2E_BASE_URL}/api/v1/video/send_tts`) {
+        return new Response(JSON.stringify({ code: 0, data: mockAudioUrl }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (urlStr === `${TEST_A2E_BASE_URL}/api/v1/video/generate`) {
+        return new Response(
+          JSON.stringify({ code: 0, data: { _id: mockTaskId } }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (urlStr === `${TEST_A2E_BASE_URL}/api/v1/video/list`) {
+        // Simulate a transport-level error (e.g. DNS / host unreachable)
+        throw new TypeError('fetch failed');
+      }
+      throw new Error(`Unexpected fetch URL: ${urlStr}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      generateMedia({
+        projectRoot,
+        projectsRoot,
+        projectId: 'project-fail-fast-transport',
+        surface: 'video',
+        model: 'a2e-avatar-video',
+        voice: '507f1f77bcf86cd799439011',
+        prompt: 'Fail fast on transport failure.',
+        output: 'fail-fast-transport.mp4',
+      }),
+    ).rejects.toThrow('fetch failed');
+  });
 });

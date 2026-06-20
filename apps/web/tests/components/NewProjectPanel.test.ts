@@ -42,4 +42,10 @@ describe('NewProjectPanel image provider visibility', () => {
     expect(models.some((model) => model.provider === 'a2e')).toBe(true);
     expect(models.some((model) => model.id === 'a2e-tts')).toBe(true);
   });
+
+  it('shows Grok in supported audio models', () => {
+    const models = supportedModels('audio', AUDIO_MODELS_BY_KIND.speech);
+    expect(models.some((model) => model.provider === 'grok')).toBe(true);
+    expect(models.some((model) => model.id === 'grok-tts')).toBe(true);
+  });
 });
