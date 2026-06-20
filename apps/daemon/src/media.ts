@@ -4133,30 +4133,45 @@ async function renderA2EVideo(ctx: MediaContext, credentials: ProviderConfig, on
     // Linear backoff up to 15 seconds
     pollIntervalMs = Math.min(pollIntervalMs + 2000, 15000);
 
-    const listResp = await fetch(`${baseUrl}/api/v1/video/list`, withMediaRequestInit(ctx, {
-      method: 'POST',
-      headers: {
-        'authorization': `Bearer ${credentials.apiKey}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({}),
-    }));
-
-    if (!listResp.ok) {
-      // transient fetch failure, wait and retry
+    let listResp: Response;
+    try {
+      listResp = await fetch(`${baseUrl}/api/v1/video/list`, withMediaRequestInit(ctx, {
+        method: 'POST',
+        headers: {
+          'authorization': `Bearer ${credentials.apiKey}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      }));
+    } catch (networkErr) {
+      // Transient network failure (DNS, TCP reset, etc.) — safe to retry.
       continue;
     }
 
+    // Non-2xx from the list endpoint is a persistent server-side error
+    // (e.g. 401 bad credentials, 500 upstream failure). Surface it
+    // immediately instead of hiding it behind a 10-minute timeout.
     const listText = await listResp.text();
+    if (!listResp.ok) {
+      throw new Error(
+        `A2E video poll error ${listResp.status}: ${truncate(listText, 240)}`,
+      );
+    }
+
     let listData: any;
     try {
       listData = JSON.parse(listText);
     } catch {
-      continue;
+      // Malformed JSON from the server is a non-transient contract error.
+      throw new Error(`A2E video poll non-JSON: ${truncate(listText, 200)}`);
     }
 
     if (listData?.code !== 0) {
-      continue;
+      // A non-zero application code (e.g. auth failure, quota exceeded)
+      // will not self-heal on retry — fail fast with the real message.
+      throw new Error(
+        `A2E video poll API error ${listData?.code ?? 'unknown'}: ${listData?.msg ?? 'unknown error'}`,
+      );
     }
 
     // Try finding the task in various possible response list shapes

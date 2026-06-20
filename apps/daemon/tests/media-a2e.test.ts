@@ -410,4 +410,114 @@ describe('a2e media generation', () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('fails fast when the A2E list poll returns a non-200 HTTP status (e.g. 401)', async () => {
+    // Regression test: the old loop treated !listResp.ok as a silent retry,
+    // so a persistent 401 would only surface as a generic timeout after 10 min.
+    // After the fix, the first non-2xx poll response throws immediately.
+    await writeConfig({
+      providers: {
+        a2e: {
+          apiKey: 'bad-key',
+          baseUrl: TEST_A2E_BASE_URL,
+        },
+      },
+    });
+
+    const mockAudioUrl = 'https://cdn.a2e.ai/tts/video_speech.wav';
+    const mockTaskId = '66f1234567890abcdef99999';
+
+    const fetchMock = vi.fn(async (input: unknown, _init?: RequestInit) => {
+      const urlStr = String(input);
+      if (urlStr === `${TEST_A2E_BASE_URL}/api/v1/video/send_tts`) {
+        return new Response(JSON.stringify({ code: 0, data: mockAudioUrl }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (urlStr === `${TEST_A2E_BASE_URL}/api/v1/video/generate`) {
+        return new Response(
+          JSON.stringify({ code: 0, data: { _id: mockTaskId } }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (urlStr === `${TEST_A2E_BASE_URL}/api/v1/video/list`) {
+        // Simulate a persistent 401 on the poll endpoint (e.g. rotated key).
+        return new Response('Unauthorized', {
+          status: 401,
+          headers: { 'content-type': 'text/plain' },
+        });
+      }
+      throw new Error(`Unexpected fetch URL: ${urlStr}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      generateMedia({
+        projectRoot,
+        projectsRoot,
+        projectId: 'project-fail-fast-401',
+        surface: 'video',
+        model: 'a2e-avatar-video',
+        voice: '507f1f77bcf86cd799439011',
+        prompt: 'Fail fast on 401.',
+        output: 'fail-fast.mp4',
+      }),
+    ).rejects.toThrow('A2E video poll error 401');
+  });
+
+  it('fails fast when the A2E list poll returns code !== 0 (e.g. auth error)', async () => {
+    // Regression test: the old loop treated code !== 0 as a silent retry,
+    // so a persistent auth failure only surfaced as a generic timeout.
+    // After the fix, the first non-zero code throws immediately.
+    await writeConfig({
+      providers: {
+        a2e: {
+          apiKey: 'quota-exceeded-key',
+          baseUrl: TEST_A2E_BASE_URL,
+        },
+      },
+    });
+
+    const mockAudioUrl = 'https://cdn.a2e.ai/tts/video_speech2.wav';
+    const mockTaskId = '66f1234567890abcdef88888';
+
+    const fetchMock = vi.fn(async (input: unknown, _init?: RequestInit) => {
+      const urlStr = String(input);
+      if (urlStr === `${TEST_A2E_BASE_URL}/api/v1/video/send_tts`) {
+        return new Response(JSON.stringify({ code: 0, data: mockAudioUrl }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (urlStr === `${TEST_A2E_BASE_URL}/api/v1/video/generate`) {
+        return new Response(
+          JSON.stringify({ code: 0, data: { _id: mockTaskId } }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (urlStr === `${TEST_A2E_BASE_URL}/api/v1/video/list`) {
+        // Simulate a persistent non-zero code (e.g. quota exceeded).
+        return new Response(
+          JSON.stringify({ code: 401, msg: 'quota exceeded' }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      throw new Error(`Unexpected fetch URL: ${urlStr}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      generateMedia({
+        projectRoot,
+        projectsRoot,
+        projectId: 'project-fail-fast-code',
+        surface: 'video',
+        model: 'a2e-avatar-video',
+        voice: '507f1f77bcf86cd799439011',
+        prompt: 'Fail fast on code error.',
+        output: 'fail-fast-code.mp4',
+      }),
+    ).rejects.toThrow('A2E video poll API error 401: quota exceeded');
+  });
 });
