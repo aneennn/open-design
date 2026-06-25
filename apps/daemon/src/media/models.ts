@@ -158,7 +158,7 @@ export const VIDEO_MODELS: MediaModel[] = [
   { id: 'doubao-seedance-1-0-lite-t2v-250428', label: 'seedance-1.0-lite-t2v', hint: 'ByteDance · text-to-video', provider: 'volcengine', caps: ['t2v'] },
 
   { id: 'grok-imagine-video', label: 'grok-imagine-video', hint: 'xAI · 720p t2v + i2v + native audio', provider: 'grok', caps: ['t2v', 'i2v', 'audio'] },
-  { id: 'a2e-avatar-video', label: 'a2e-avatar-video', hint: 'A2E · Avatar Lipsync video generation', provider: 'a2e', caps: ['t2v', 'i2v', 'audio'] },
+  { id: 'a2e-avatar-video', label: 'a2e-avatar-video', hint: 'A2E · Avatar Lipsync video generation', provider: 'a2e', caps: ['t2v', 'audio'] },
 
   // OpenRouter video models.
   { id: 'openrouter/bytedance/seedance-2.0:1080p', label: 'seedance-2.0 1080p (OR)', hint: 'OpenRouter · ByteDance · 1080p', provider: 'openrouter', caps: ['t2v', 'i2v'], default: true },

@@ -3986,6 +3986,10 @@ async function renderA2ETTS(ctx: MediaContext, credentials: ProviderConfig): Pro
     isCustomVoice = true;
   }
 
+  if (!voiceId) {
+    throw new Error('A2E voice ID cannot be empty');
+  }
+
   const body: Record<string, any> = {
     msg: text,
     speechRate: 1.0,
@@ -4054,6 +4058,9 @@ async function renderA2EVideo(ctx: MediaContext, credentials: ProviderConfig, on
   if (!credentials.apiKey) {
     throw new Error('no A2E API key — configure it in Settings or set OD_A2E_API_KEY');
   }
+  if (ctx.imageRef) {
+    throw new Error('A2E video generator does not support image-to-video (i2v) generation');
+  }
   const baseUrl = (credentials.baseUrl || 'https://video.a2e.ai').replace(/\/$/, '');
 
   let anchorId = ctx.voice && ctx.voice.trim();
@@ -4068,6 +4075,10 @@ async function renderA2EVideo(ctx: MediaContext, credentials: ProviderConfig, on
   } else if (anchorId.startsWith('user:')) {
     anchorId = anchorId.slice(5).trim();
     anchorType = 1;
+  }
+
+  if (!anchorId) {
+    throw new Error('A2E Avatar/Anchor ID cannot be empty');
   }
 
   // Step 1: Generate TTS Audio first using the prompt

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { generateMedia } from '../src/media.js';
+import { generateMedia } from '../src/media/index.js';
 
 const TEST_A2E_BASE_URL = 'https://a2e-gateway.example.test';
 
@@ -571,5 +571,73 @@ describe('a2e media generation', () => {
         output: 'fail-fast-transport.mp4',
       }),
     ).rejects.toThrow('fetch failed');
+  });
+
+  it('fails fast when image input is provided to A2E video', async () => {
+    await writeConfig({
+      providers: {
+        a2e: {
+          apiKey: 'test-key',
+          baseUrl: TEST_A2E_BASE_URL,
+        },
+      },
+    });
+
+    const projectDir = path.join(projectsRoot, 'project-a2e-i2v');
+    await mkdir(projectDir, { recursive: true });
+    const dummyImagePath = path.join(projectDir, 'input.png');
+    await writeFile(dummyImagePath, Buffer.from([1, 2, 3]));
+
+    await expect(
+      generateMedia({
+        projectRoot,
+        projectsRoot,
+        projectId: 'project-a2e-i2v',
+        surface: 'video',
+        model: 'a2e-avatar-video',
+        voice: '507f1f77bcf86cd799439011',
+        prompt: 'Should fail with image.',
+        image: 'input.png',
+        output: 'fail-i2v.mp4',
+      }),
+    ).rejects.toThrow('A2E video generator does not support image-to-video (i2v) generation');
+  });
+
+  it('fails fast when A2E voice ID is custom: or user: (empty voice ID)', async () => {
+    await writeConfig({
+      providers: {
+        a2e: {
+          apiKey: 'test-key',
+          baseUrl: TEST_A2E_BASE_URL,
+        },
+      },
+    });
+
+    await expect(
+      generateMedia({
+        projectRoot,
+        projectsRoot,
+        projectId: 'project-a2e-empty-voice',
+        surface: 'audio',
+        model: 'a2e-tts',
+        audioKind: 'speech',
+        voice: 'custom:',
+        prompt: 'Should fail with empty voice.',
+        output: 'fail-voice.wav',
+      }),
+    ).rejects.toThrow('A2E voice ID cannot be empty');
+
+    await expect(
+      generateMedia({
+        projectRoot,
+        projectsRoot,
+        projectId: 'project-a2e-empty-anchor',
+        surface: 'video',
+        model: 'a2e-avatar-video',
+        voice: 'user:  ',
+        prompt: 'Should fail with empty anchor.',
+        output: 'fail-anchor.mp4',
+      }),
+    ).rejects.toThrow('A2E Avatar/Anchor ID cannot be empty');
   });
 });

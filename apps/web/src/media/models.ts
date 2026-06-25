@@ -585,13 +585,12 @@ export const VIDEO_MODELS: MediaModel[] = [
     provider: 'grok',
     caps: ['t2v', 'i2v', 'audio'],
   },
-  // A2E Avatar Video — avatar lipsync video generation.
   {
     id: 'a2e-avatar-video',
     label: 'a2e-avatar-video',
     hint: 'A2E · Avatar Lipsync video generation',
     provider: 'a2e',
-    caps: ['t2v', 'i2v', 'audio'],
+    caps: ['t2v', 'audio'],
   },
 
   // OpenRouter video models.
