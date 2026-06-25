@@ -36,10 +36,10 @@ import {
 } from '@open-design/platform';
 import { attachAcpSession } from './acp.js';
 import { attachPiRpcSession } from './pi-rpc.js';
-import { createClaudeStreamHandler } from './claude-stream.js';
+import { createClaudeStreamHandler } from './runtimes/claude-stream.js';
 import { diagnoseClaudeCliFailure } from './claude-diagnostics.js';
 import { createCopilotStreamHandler } from './copilot-stream.js';
-import { createJsonEventStreamHandler } from './json-event-stream.js';
+import { createJsonEventStreamHandler } from './runtimes/json-event-stream.js';
 import { agentCliEnvForAgent, validateAgentCliEnv } from './app-config.js';
 import {
   classifyAgentAuthFailure,
@@ -52,8 +52,8 @@ import {
   buildMaxCompletionTokensParam,
   buildOpenAIChatTokenParam,
   isUnsupportedMaxTokensError,
-} from './openai-chat-token-params.js';
-import { aihubmixHeaders } from './aihubmix.js';
+} from './integrations/openai-chat-token-params.js';
+import { aihubmixHeaders } from './integrations/aihubmix.js';
 import type { AgentCliEnvPrefs } from './app-config.js';
 import type { RuntimeAgentDef } from './runtimes/types.js';
 import { resolveModelForAgent } from './runtimes/models.js';
@@ -72,7 +72,7 @@ import {
   type ParsedBaseUrl,
   type ProviderTestRequest,
 } from '@open-design/contracts/api/connectionTest';
-import { googleGenerateContentUrl } from './google-models.js';
+import { googleGenerateContentUrl } from './integrations/google-models.js';
 import { resolveAmrProfile } from './integrations/vela.js';
 
 export { validateBaseUrl } from '@open-design/contracts/api/connectionTest';
@@ -2060,8 +2060,8 @@ async function testAgentConnectionInternal(
   };
 
   try {
-    if (input.agentId === 'opencode') {
-      await prepareOpenCodeConnectionTestCwd(tempDir);
+    if (input.agentId === 'opencode' || input.agentId === 'mimo') {
+      if (input.agentId === 'opencode') await prepareOpenCodeConnectionTestCwd(tempDir);
     }
     let args: string[];
     try {
@@ -2080,10 +2080,10 @@ async function testAgentConnectionInternal(
       // fail on unrelated user-installed OpenCode plugins. `opencode run
       // --pure` keeps the smoke test isolated while regular chat runs retain
       // the user's full plugin environment.
-      if (input.agentId === 'opencode' && !args.includes('--pure')) {
+      if ((input.agentId === 'opencode' || input.agentId === 'mimo') && !args.includes('--pure')) {
         args.push('--pure');
       }
-      if (input.agentId === 'opencode' && !args.includes('--title')) {
+      if ((input.agentId === 'opencode' || input.agentId === 'mimo') && !args.includes('--title')) {
         args.push('--title', 'Connection test');
       }
     } catch (err) {
@@ -2286,7 +2286,7 @@ async function testAgentConnectionInternal(
       }
       const stderrTail = sink.getStderrTail().trim();
       const rawStdoutTail = sink.getRawStdoutTail().trim();
-      if (input.agentId === 'opencode' && exitedCleanly && rawStdoutTail) {
+      if ((input.agentId === 'opencode' || input.agentId === 'mimo') && exitedCleanly && rawStdoutTail) {
         const recoveredText = extractOpenCodeTextFromRawStdout(rawStdoutTail).trim();
         if (recoveredText) {
           return resultFromAgentText(recoveredText, {

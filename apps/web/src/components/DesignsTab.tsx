@@ -21,7 +21,11 @@ import type {
 } from "../types";
 import { AnimatePresence } from "motion/react";
 import { Icon } from "./Icon";
-import { isDesignSystemProject, isPublishedDesignSystemProject } from "./design-system-project";
+import {
+	isDesignSystemProject,
+	isPublishedDesignSystemProject,
+	resolveProjectDesignSystemId,
+} from "./design-system-project";
 import { LiveArtifactBadges } from "./LiveArtifactBadges";
 import { Toast } from "./Toast";
 
@@ -175,6 +179,10 @@ export function DesignsTab({
 		void Promise.all(
 			projects.map(async (project) => {
 				const designSystemProject = isDesignSystemProject(project);
+				// Brand projects render a generated logo/monogram cover (see
+				// projectCover) instead of a raw HTML file preview, so skip the
+				// file scan entirely for them.
+				if (project.metadata?.kind === "brand") return [project.id, null] as const;
 				if (project.metadata?.entryFile && !designSystemProject) return [project.id, null] as const;
 				let files: Awaited<ReturnType<typeof fetchProjectFiles>>;
 				try {
@@ -685,7 +693,7 @@ export function DesignsTab({
 					{filtered.map((item) => {
 						const p = item.project;
 						const skill = skillName(p.skillId);
-						const ds = dsName(p.designSystemId);
+						const ds = dsName(resolveProjectDesignSystemId(p));
 						if (item.type === "live-artifact") {
 							const artifact = item.liveArtifact;
 							const title = liveArtifactCardTitle(p, artifact);
@@ -883,7 +891,13 @@ export function DesignsTab({
 									style={cover.style}
 									aria-hidden
 								>
-									{(cover.kind === "image" || cover.kind === "logo") && cover.src ? (
+									{cover.kind === "brand" ? (
+										<ProjectBrandCover
+											brandId={cover.brandId}
+											host={cover.brandHost}
+											initial={cover.initial}
+										/>
+									) : (cover.kind === "image" || cover.kind === "logo") && cover.src ? (
 										<img className="thumb-media" src={cover.src} alt="" loading="lazy" />
 									) : cover.kind === "video" && cover.src ? (
 										<video className="thumb-media" src={cover.src} muted preload="metadata" playsInline />
@@ -966,7 +980,7 @@ export function DesignsTab({
 									) : (
 										colProjects.map(({ project: p }) => {
 											const skill = skillName(p.skillId);
-											const ds = dsName(p.designSystemId);
+											const ds = dsName(resolveProjectDesignSystemId(p));
 											const designSystemProject = isDesignSystemProject(p);
 											return (
 												<div
@@ -1174,10 +1188,12 @@ function projectCover(
 	project: Project,
 	override: { kind: "html" | "image" | "video" | "logo"; name: string } | null,
 ): {
-	kind: "image" | "video" | "html" | "logo" | "fallback";
+	kind: "image" | "video" | "html" | "logo" | "brand" | "fallback";
 	src?: string;
 	style: CSSProperties;
 	initial: string;
+	brandId?: string;
+	brandHost?: string;
 } {
 	let h = 0;
 	for (let i = 0; i < project.id.length; i++) {
@@ -1190,6 +1206,20 @@ function projectCover(
 	};
 	const trimmed = project.name.trim();
 	const initial = (trimmed ? Array.from(trimmed)[0]! : "?").toUpperCase();
+	const meta = project.metadata;
+	// Brand projects get a clean generated cover (extracted logo / site favicon
+	// / monogram) rather than a raw scaled-down HTML page, which reads as broken
+	// clipped text in the card. The brand color gradient mirrors the monogram
+	// cards so brand kits sit consistently in the grid.
+	if (meta?.kind === "brand") {
+		return {
+			kind: "brand",
+			style,
+			initial,
+			brandId: meta.brandId,
+			brandHost: brandHostname(meta.brandSourceUrl),
+		};
+	}
 	if (override) {
 		return {
 			kind: override.kind,
@@ -1198,7 +1228,6 @@ function projectCover(
 			initial,
 		};
 	}
-	const meta = project.metadata;
 	const entry = meta?.entryFile;
 	if (entry) {
 		const src = projectFileUrl(project.id, entry);
@@ -1209,7 +1238,67 @@ function projectCover(
 	return { kind: "fallback", style, initial };
 }
 
-type ProjectCategory = "prototype" | "live-artifact" | "slide" | "media";
+// Best-effort hostname for the brand cover's favicon fallback. Mirrors the
+// helper in BrandsTab; brand source URLs are always present in metadata even
+// before extraction finishes.
+function brandHostname(rawUrl: string | undefined): string | undefined {
+	if (!rawUrl) return undefined;
+	try {
+		return new URL(rawUrl).hostname.replace(/^www\./, "");
+	} catch {
+		const stripped = rawUrl
+			.replace(/^https?:\/\//, "")
+			.replace(/^www\./, "")
+			.split("/")[0];
+		return stripped || undefined;
+	}
+}
+
+// Brand project cover: shows the extracted brand logo when available, falling
+// back to the site favicon, then a monogram. The image error chain lets a card
+// degrade gracefully without leaving a broken image icon on the gradient.
+function ProjectBrandCover({
+	brandId,
+	host,
+	initial,
+}: {
+	brandId?: string;
+	host?: string;
+	initial: string;
+}) {
+	const sources = useMemo(() => {
+		const list: string[] = [];
+		if (brandId) list.push(`/api/brands/${encodeURIComponent(brandId)}/logo`);
+		if (host) {
+			list.push(
+				`https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=128`,
+			);
+		}
+		return list;
+	}, [brandId, host]);
+	const sourceKey = sources.join("|");
+	const [index, setIndex] = useState(0);
+	useEffect(() => {
+		setIndex(0);
+	}, [sourceKey]);
+	const src = sources[index];
+	if (!src) {
+		return <span className="project-thumb-glyph">{initial}</span>;
+	}
+	return (
+		<span className="project-thumb-brand-logo">
+			<img
+				className="thumb-media"
+				src={src}
+				alt=""
+				loading="lazy"
+				onError={() => setIndex((current) => current + 1)}
+			/>
+		</span>
+	);
+}
+
+type ProjectCategory = "prototype" | "live-artifact" | "slide" | "media" | "brand";
 
 function projectCategory(project: Project): ProjectCategory {
 	const meta = project.metadata;
@@ -1217,6 +1306,7 @@ function projectCategory(project: Project): ProjectCategory {
 		return "live-artifact";
 	}
 	if (meta?.kind === "deck") return "slide";
+	if (meta?.kind === "brand") return "brand";
 	if (meta?.kind === "image" || meta?.kind === "video" || meta?.kind === "audio") {
 		return "media";
 	}
@@ -1230,6 +1320,8 @@ function ProjectTag({ category }: { category: ProjectCategory }) {
 			? t("designs.tagLiveArtifact")
 			: category === "slide"
 				? t("designs.tagSlide")
+				: category === "brand"
+					? "Brand"
 				: category === "media"
 					? t("designs.tagMedia")
 					: t("designs.tagPrototype");
